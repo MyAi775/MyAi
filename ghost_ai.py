@@ -1,13 +1,6 @@
 import os
 import json
-from flask import (
-    Flask,
-    request,
-    jsonify,
-    Response,
-    render_template_string,
-    stream_with_context,
-)
+from flask import Flask, request, jsonify, Response, render_template_string, stream_with_context
 from groq import Groq
 
 app = Flask(__name__)
@@ -19,14 +12,11 @@ app = Flask(__name__)
 API_KEY = os.environ.get("GROQ_API_KEY")
 
 if not API_KEY:
-    raise RuntimeError(
-        "GROQ_API_KEY nuk është vendosur në Render Environment Variables."
-    )
+    raise RuntimeError("GROQ_API_KEY nuk është vendosur.")
 
 client = Groq(api_key=API_KEY)
 
 MODEL = "openai/gpt-oss-120b"
-
 MAX_HISTORY = 12
 MAX_OUTPUT_TOKENS = 1400
 MAX_MESSAGE_CHARS = 5000
@@ -42,58 +32,42 @@ You are Ghost-AI, a smart, natural, friendly AI assistant created by Matia.
 
 PERSONALITY:
 - Speak naturally and casually.
-- Sound like a modern high-quality AI assistant.
-- Never sound robotic, awkward, repetitive, or overly formal.
-- Match the user's tone.
-- Simple question = concise natural answer.
-- Hard question = clear and useful explanation.
-- Do not over-explain simple questions.
-- Do not repeat the same phrases unnecessarily.
-- Be friendly and helpful.
+- Match the user's tone and language.
+- Be friendly, useful and concise.
+- Never sound robotic or repetitive.
 
 ALBANIAN:
 - Understand Standard Albanian, Gheg, Tosk, slang, texting,
-  abbreviations, spelling mistakes, missing accents and mixed English.
+  abbreviations, spelling mistakes and mixed English.
 - When the user writes Albanian, answer naturally in Albanian.
-- Understand phrases such as:
+- Understand phrases like:
   ca, cfar, sdi, ska, nji, bej, ma jep, ma rregullo,
-  jo jo, e kam fjalen, si je, ca po ben.
-
-NATURAL CHAT:
-- Understand casual conversations.
-- Understand follow-up questions.
-- Understand references like:
-  kjo, ajo, kodi, ushtrimi, loja, versioni i fundit,
-  ai script, ajo faqe, problemi.
+  jo jo, e kam fjalen, ate, kjo, ajo.
 
 SMART CONTEXT:
-- Use the recent conversation history.
-- Keep track of the current topic.
-- If the user says "jo jo", "e kam fjalen...", "ate te parin",
-  or similar, use the previous context to understand what they mean.
-- If the user corrects you, immediately adapt.
-- Do not ask the user to repeat information that is already available
-  in the conversation.
-
-MEMORY:
-- Use saved memory when relevant.
-- Never claim something is remembered unless it is actually present
-  in the supplied memory.
-- Do not invent personal memories.
+- Use recent conversation context.
+- Understand follow-up questions.
+- Understand references like:
+  kjo, ajo, kodi, loja, scripti, problemi, versioni.
+- If the user corrects you, adapt immediately.
+- Do not ask for information already available.
 
 CREATOR:
 - Ghost-AI was created by Matia.
 - If asked who created you, say:
   "Ghost-AI was created by Matia."
 
+MEMORY:
+- Use saved memory when relevant.
+- Never invent memories.
+- Never claim something is remembered unless it is actually provided.
+
 MATH EXPERT:
 - Be extremely accurate.
-- Never guess numerical answers.
 - Verify calculations.
 - Solve arithmetic, percentages, fractions, algebra,
   equations, geometry, probability and statistics.
 - Show useful steps when appropriate.
-- Check the final result before answering.
 
 CODING EXPERT:
 - Expert in Python, JavaScript, HTML, CSS, Lua, Roblox Lua,
@@ -103,38 +77,31 @@ CODING EXPERT:
 - Preserve working code when debugging.
 - Never invent APIs or libraries.
 - Never claim code was executed unless it actually was.
-- Explain exactly what needs to be changed.
 
 DEBUGGING:
 - Analyze the exact error.
-- Identify the likely cause.
+- Find the likely cause.
 - Give a direct fix.
-- When possible, provide the corrected complete code.
+- When useful, provide the corrected complete code.
 
 TUTOR:
 - Explain step by step when useful.
 - Match the user's level.
-- Help with school subjects and learning.
 
 QUIZ:
-- If the user asks for a quiz, create clear questions.
-- Adapt the difficulty to the user's request.
-- Give correct answers and explanations when requested.
+- Create quizzes with adjustable difficulty.
+- Keep track of the current quiz when context is available.
+- Give answers and explanations when requested.
 
 CREATIVE:
 - Help with stories, games, ideas, names and projects.
-- Help create Roblox games and scripts.
-- Help with web projects and UI.
 
 GENERAL:
 - Never invent facts.
-- If uncertain, say you are uncertain.
-- Do not pretend to have performed an action that you did not perform.
+- If uncertain, say so.
 
 CYBERSECURITY:
-- Help with authorized, defensive and educational cybersecurity.
-- Do not help steal passwords, accounts or private data.
-- Safe labs and local testing are allowed.
+- Help only with authorized, defensive and educational cybersecurity.
 
 IMPORTANT:
 - You are Ghost-AI.
@@ -151,8 +118,8 @@ def load_memory():
         return []
 
     try:
-        with open(MEMORY_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
+        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
         if isinstance(data, list):
             return data
@@ -165,12 +132,12 @@ def load_memory():
 
 def save_memory(items):
     try:
-        with open(MEMORY_FILE, "w", encoding="utf-8") as file:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
             json.dump(
                 items[-30:],
-                file,
+                f,
                 ensure_ascii=False,
-                indent=2,
+                indent=2
             )
     except Exception:
         pass
@@ -196,12 +163,13 @@ def build_system_prompt():
 
 
 # ============================================================
-# HTML UI
+# HTML
 # ============================================================
 
 HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 
 <meta charset="UTF-8">
@@ -479,7 +447,7 @@ textarea {
     background: #333;
 }
 
-/* MESSAGES */
+/* MESSAGE */
 
 .message {
     display: flex;
@@ -603,8 +571,6 @@ textarea::placeholder {
     cursor: default;
 }
 
-/* MOBILE */
-
 @media (max-width: 700px) {
 
     .sidebar {
@@ -679,6 +645,7 @@ Chats
 <div>Coding Expert</div>
 <div>Smart Context</div>
 <div>Memory</div>
+<div>Quiz Mode</div>
 <div>Created by Matia</div>
 
 </div>
@@ -739,7 +706,7 @@ Chats
 
 <script>
 
-const STORAGE_KEY = "ghost_ai_chats_v7";
+const STORAGE_KEY = "ghost_ai_chats_v8";
 
 let chats = [];
 let activeChatId = null;
@@ -856,8 +823,10 @@ function escapeHtml(text) {
 function scrollBottom() {
 
     requestAnimationFrame(() => {
+
         chat.scrollTop =
             chat.scrollHeight;
+
     });
 }
 
@@ -892,7 +861,9 @@ function formatAnswer(text) {
                         lines[0].trim()
                     )
                 ) {
+
                     lines.shift();
+
                 }
 
                 const code =
@@ -910,7 +881,10 @@ function formatAnswer(text) {
 
                 html +=
                     escapeHtml(part)
-                        .replace(/\n/g, "<br>");
+                        .replace(
+                            /\n/g,
+                            "<br>"
+                        );
             }
         }
     );
@@ -946,31 +920,32 @@ function renderChatList() {
                 (a.updatedAt || 0)
         );
 
-    ordered.forEach(chatData => {
+    ordered.forEach(
+        chatData => {
 
-        const item =
-            document.createElement("div");
+            const item =
+                document.createElement("div");
 
-        item.className =
-            "chat-item" +
-            (
-                chatData.id === activeChatId
-                    ? " active"
-                    : ""
-            );
+            item.className =
+                "chat-item" +
+                (
+                    chatData.id === activeChatId
+                        ? " active"
+                        : ""
+                );
 
-        const open =
-            document.createElement("button");
+            const open =
+                document.createElement("button");
 
-        open.type = "button";
-        open.className = "chat-open";
+            open.type = "button";
+            open.className =
+                "chat-open";
 
-        open.textContent =
-            chatData.title || "New chat";
+            open.textContent =
+                chatData.title ||
+                "New chat";
 
-        open.addEventListener(
-            "click",
-            () => {
+            open.onclick = () => {
 
                 if (streaming) {
                     return;
@@ -983,35 +958,33 @@ function renderChatList() {
                 renderActiveChat();
 
                 input.focus();
-            }
-        );
+            };
 
-        const remove =
-            document.createElement("button");
+            const remove =
+                document.createElement("button");
 
-        remove.type = "button";
-        remove.className =
-            "chat-delete";
+            remove.type = "button";
+            remove.className =
+                "chat-delete";
 
-        remove.textContent = "🗑";
+            remove.textContent = "🗑";
 
-        remove.addEventListener(
-            "click",
-            event => {
+            remove.onclick =
+                event => {
 
-                event.stopPropagation();
+                    event.stopPropagation();
 
-                deleteChat(
-                    chatData.id
-                );
-            }
-        );
+                    deleteChat(
+                        chatData.id
+                    );
+                };
 
-        item.appendChild(open);
-        item.appendChild(remove);
+            item.appendChild(open);
+            item.appendChild(remove);
 
-        chatList.appendChild(item);
-    });
+            chatList.appendChild(item);
+        }
+    );
 }
 
 
@@ -1062,7 +1035,7 @@ function deleteChat(id) {
     if (activeChatId === id) {
 
         activeChatId =
-            chats.length > 0
+            chats.length
                 ? chats[0].id
                 : null;
     }
@@ -1121,9 +1094,9 @@ function renderWelcome() {
                 <button
                     class="prompt-button"
                     type="button"
-                    data-prompt="Më shpjego Black Hole në mënyrë interesante dhe të kuptueshme."
+                    data-prompt="Më bëj një quiz me 10 pyetje dhe mos më jep përgjigjet derisa të përgjigjem."
                 >
-                    🌌 Science
+                    🧠 Quiz
                 </button>
 
             </div>
@@ -1169,50 +1142,55 @@ function wireCopyButtons(container) {
 
     container
         .querySelectorAll(".copy-button")
-        .forEach(button => {
+        .forEach(
+            button => {
 
-            button.addEventListener(
-                "click",
-                async () => {
+                button.onclick =
+                    async () => {
 
-                    const pre =
-                        button.previousElementSibling;
+                        const pre =
+                            button.previousElementSibling;
 
-                    if (!pre) {
-                        return;
-                    }
+                        if (!pre) {
+                            return;
+                        }
 
-                    try {
+                        try {
 
-                        await navigator
-                            .clipboard
-                            .writeText(
-                                pre.innerText
+                            await navigator
+                                .clipboard
+                                .writeText(
+                                    pre.innerText
+                                );
+
+                            button.textContent =
+                                "Copied!";
+
+                            setTimeout(
+                                () => {
+
+                                    button.textContent =
+                                        "Copy code";
+
+                                },
+                                1000
                             );
 
-                        button.textContent =
-                            "Copied!";
+                        } catch {
 
-                        setTimeout(
-                            () => {
-                                button.textContent =
-                                    "Copy code";
-                            },
-                            1000
-                        );
-
-                    } catch {
-
-                        button.textContent =
-                            "Copy failed";
-                    }
-                }
-            );
-        });
+                            button.textContent =
+                                "Copy failed";
+                        }
+                    };
+            }
+        );
 }
 
 
-function addMessageToUI(role, text) {
+function addMessageToUI(
+    role,
+    text
+) {
 
     const message =
         document.createElement("div");
@@ -1220,28 +1198,33 @@ function addMessageToUI(role, text) {
     message.className =
         "message " + role;
 
-    const isAI =
+    const ai =
         role === "assistant";
 
     message.innerHTML = `
 
         <div class="avatar">
-            ${isAI ? "👻" : "M"}
+            ${ai ? "👻" : "M"}
         </div>
 
         <div style="flex:1">
 
             <div class="name">
-                ${isAI ? "Ghost-AI" : "You"}
+                ${ai ? "Ghost-AI" : "You"}
             </div>
 
             <div class="content">
+
                 ${
-                    isAI
+                    ai
                         ? formatAnswer(text)
                         : escapeHtml(text)
-                            .replace(/\n/g, "<br>")
+                            .replace(
+                                /\n/g,
+                                "<br>"
+                            )
                 }
+
             </div>
 
         </div>
@@ -1284,7 +1267,9 @@ function createStreamingMessage() {
     chatInner.appendChild(message);
 
     return {
+
         root: message,
+
         content:
             message.querySelector(
                 "#streamContent"
@@ -1293,7 +1278,9 @@ function createStreamingMessage() {
 }
 
 
-async function sendMessage(customText = null) {
+async function sendMessage(
+    customText = null
+) {
 
     if (streaming) {
         return;
@@ -1352,17 +1339,13 @@ async function sendMessage(customText = null) {
 
     let fullAnswer = "";
 
-    const recent =
-        active.messages.slice(
-            -MAX_HISTORY
-        );
-
     try {
 
         const response =
             await fetch(
                 "/api/chat/stream",
                 {
+
                     method: "POST",
 
                     headers: {
@@ -1373,14 +1356,16 @@ async function sendMessage(customText = null) {
                     body:
                         JSON.stringify({
                             messages:
-                                recent
+                                active.messages.slice(
+                                    -12
+                                )
                         })
                 }
             );
 
         if (!response.ok) {
 
-            let errorMessage =
+            let message =
                 "Server error.";
 
             try {
@@ -1388,15 +1373,13 @@ async function sendMessage(customText = null) {
                 const data =
                     await response.json();
 
-                errorMessage =
+                message =
                     data.error ||
-                    errorMessage;
+                    message;
 
             } catch {}
 
-            throw new Error(
-                errorMessage
-            );
+            throw new Error(message);
         }
 
         if (!response.body) {
@@ -1426,7 +1409,9 @@ async function sendMessage(customText = null) {
             buffer +=
                 decoder.decode(
                     result.value,
-                    { stream: true }
+                    {
+                        stream: true
+                    }
                 );
 
             const packets =
@@ -1435,7 +1420,9 @@ async function sendMessage(customText = null) {
             buffer =
                 packets.pop() || "";
 
-            for (const packet of packets) {
+            for (
+                const packet of packets
+            ) {
 
                 const line =
                     packet
@@ -1454,7 +1441,9 @@ async function sendMessage(customText = null) {
                 const payload =
                     line.slice(6);
 
-                if (payload === "[DONE]") {
+                if (
+                    payload === "[DONE]"
+                ) {
                     continue;
                 }
 
@@ -1463,25 +1452,35 @@ async function sendMessage(customText = null) {
                 try {
 
                     parsed =
-                        JSON.parse(payload);
+                        JSON.parse(
+                            payload
+                        );
 
                 } catch {
 
                     continue;
                 }
 
-                if (parsed.type === "delta") {
+                if (
+                    parsed.type ===
+                    "delta"
+                ) {
 
                     fullAnswer +=
-                        parsed.content || "";
+                        parsed.content ||
+                        "";
 
-                    streamUI.content.textContent =
-                        fullAnswer;
+                    streamUI.content
+                        .textContent =
+                            fullAnswer;
 
                     scrollBottom();
                 }
 
-                if (parsed.type === "error") {
+                if (
+                    parsed.type ===
+                    "error"
+                ) {
 
                     throw new Error(
                         parsed.message ||
@@ -1492,6 +1491,7 @@ async function sendMessage(customText = null) {
         }
 
         if (!fullAnswer) {
+
             fullAnswer =
                 "Nuk mora përgjigje.";
         }
@@ -1514,6 +1514,7 @@ async function sendMessage(customText = null) {
         );
 
         renderChatList();
+
         scrollBottom();
 
     } catch (error) {
@@ -1551,16 +1552,12 @@ async function sendMessage(customText = null) {
 }
 
 
-sendButton.addEventListener(
-    "click",
-    () => sendMessage()
-);
+sendButton.onclick =
+    () => sendMessage();
 
 
-newChatButton.addEventListener(
-    "click",
-    () => newChat()
-);
+newChatButton.onclick =
+    () => newChat();
 
 
 input.addEventListener(
@@ -1622,7 +1619,7 @@ document.addEventListener(
 
 loadChats();
 
-if (chats.length > 0) {
+if (chats.length) {
 
     activeChatId =
         chats[0].id;
@@ -1641,7 +1638,7 @@ input.focus();
 
 
 # ============================================================
-# WEB APP
+# ROUTES
 # ============================================================
 
 @app.route("/")
@@ -1651,10 +1648,11 @@ def home():
 
 @app.route("/health")
 def health():
+
     return jsonify({
         "status": "ok",
         "app": "Ghost-AI",
-        "model": MODEL,
+        "model": MODEL
     })
 
 
@@ -1665,18 +1663,20 @@ def health():
 def build_messages(incoming):
 
     if not isinstance(incoming, list):
-        raise ValueError("Invalid messages.")
-
-    recent = incoming[-MAX_HISTORY:]
+        raise ValueError(
+            "Invalid messages."
+        )
 
     request_messages = [
+
         {
             "role": "system",
-            "content": build_system_prompt(),
+            "content": build_system_prompt()
         }
+
     ]
 
-    for item in recent:
+    for item in incoming[-MAX_HISTORY:]:
 
         if not isinstance(item, dict):
             continue
@@ -1684,26 +1684,35 @@ def build_messages(incoming):
         role = item.get("role")
         content = item.get("content")
 
-        if role not in ("user", "assistant"):
+        if role not in (
+            "user",
+            "assistant"
+        ):
             continue
 
         if not isinstance(content, str):
             continue
 
-        content = content[:MAX_MESSAGE_CHARS]
-
         if not content.strip():
             continue
 
         request_messages.append({
+
             "role": role,
-            "content": content,
+
+            "content":
+                content[:MAX_MESSAGE_CHARS]
+
         })
 
     if len(request_messages) < 2:
-        raise ValueError("No user message.")
+
+        raise ValueError(
+            "No user message."
+        )
 
     if request_messages[-1]["role"] != "user":
+
         raise ValueError(
             "Last message must be from user."
         )
@@ -1712,7 +1721,7 @@ def build_messages(incoming):
 
 
 # ============================================================
-# NORMAL CHAT API
+# NORMAL CHAT
 # ============================================================
 
 @app.route(
@@ -1723,23 +1732,24 @@ def chat_api():
 
     try:
 
-        data = request.get_json(
-            silent=True
-        )
+        data =
+            request.get_json(
+                silent=True
+            )
 
         if not isinstance(data, dict):
+
             return jsonify({
                 "error":
                     "Invalid request."
             }), 400
 
-        incoming = data.get(
-            "messages",
-            []
+        request_messages = build_messages(
+            data.get(
+                "messages",
+                []
+            )
         )
-
-        request_messages =
-            build_messages(incoming)
 
         response =
             client.chat.completions.create(
@@ -1748,11 +1758,13 @@ def chat_api():
                 temperature=0.5,
                 top_p=0.9,
                 max_completion_tokens=
-                    MAX_OUTPUT_TOKENS,
+                    MAX_OUTPUT_TOKENS
             )
 
         answer =
-            response.choices[0].message.content
+            response.choices[
+                0
+            ].message.content
 
         if not answer:
             answer = "Nuk mora përgjigje."
@@ -1764,21 +1776,25 @@ def chat_api():
     except ValueError as error:
 
         return jsonify({
-            "error": str(error)
+            "error":
+                str(error)
         }), 400
 
     except Exception as error:
 
-        print("CHAT ERROR:", repr(error))
+        print(
+            "CHAT ERROR:",
+            repr(error)
+        )
 
         return jsonify({
             "error":
-                "Ghost-AI encountered an error."
+                str(error)
         }), 500
 
 
 # ============================================================
-# STREAMING CHAT
+# STREAM CHAT
 # ============================================================
 
 @app.route(
@@ -1794,23 +1810,24 @@ def chat_stream():
         )
 
         if not isinstance(data, dict):
+
             return jsonify({
                 "error":
                     "Invalid request."
             }), 400
 
-        incoming = data.get(
-            "messages",
-            []
+        request_messages = build_messages(
+            data.get(
+                "messages",
+                []
+            )
         )
-
-        request_messages =
-            build_messages(incoming)
 
     except ValueError as error:
 
         return jsonify({
-            "error": str(error)
+            "error":
+                str(error)
         }), 400
 
     except Exception as error:
@@ -1825,6 +1842,7 @@ def chat_stream():
                 "Invalid request."
         }), 400
 
+
     @stream_with_context
     def generate():
 
@@ -1838,7 +1856,7 @@ def chat_stream():
                     top_p=0.9,
                     max_completion_tokens=
                         MAX_OUTPUT_TOKENS,
-                    stream=True,
+                    stream=True
                 )
 
             for chunk in stream:
@@ -1853,13 +1871,18 @@ def chat_stream():
 
                 if delta:
 
-                    payload = json.dumps(
-                        {
-                            "type": "delta",
-                            "content": delta,
-                        },
-                        ensure_ascii=False,
-                    )
+                    payload =
+                        json.dumps(
+                            {
+                                "type":
+                                    "delta",
+
+                                "content":
+                                    delta
+                            },
+
+                            ensure_ascii=False
+                        )
 
                     yield (
                         "data: "
@@ -1867,7 +1890,9 @@ def chat_stream():
                         + "\n\n"
                     )
 
-            yield "data: [DONE]\n\n"
+            yield (
+                "data: [DONE]\n\n"
+            )
 
         except Exception as error:
 
@@ -1876,14 +1901,18 @@ def chat_stream():
                 repr(error)
             )
 
-            payload = json.dumps(
-                {
-                    "type": "error",
-                    "message":
-                        "Ghost-AI encountered an error.",
-                },
-                ensure_ascii=False,
-            )
+            payload =
+                json.dumps(
+                    {
+                        "type":
+                            "error",
+
+                        "message":
+                            str(error)
+                    },
+
+                    ensure_ascii=False
+                )
 
             yield (
                 "data: "
@@ -1891,22 +1920,29 @@ def chat_stream():
                 + "\n\n"
             )
 
+
     return Response(
+
         generate(),
-        mimetype="text/event-stream",
+
+        mimetype=
+            "text/event-stream",
+
         headers={
             "Cache-Control":
                 "no-cache",
+
             "X-Accel-Buffering":
                 "no",
+
             "Connection":
-                "keep-alive",
-        },
+                "keep-alive"
+        }
     )
 
 
 # ============================================================
-# MEMORY API
+# MEMORY
 # ============================================================
 
 @app.route(
@@ -1916,7 +1952,8 @@ def chat_stream():
 def get_memory():
 
     return jsonify({
-        "memory": memory
+        "memory":
+            memory
     })
 
 
@@ -1928,19 +1965,18 @@ def add_memory():
 
     global memory
 
-    data = (
+    data =
         request.get_json(
             silent=True
-        )
-        or {}
-    )
+        ) or {}
 
-    text = str(
-        data.get(
-            "text",
-            ""
-        )
-    ).strip()
+    text =
+        str(
+            data.get(
+                "text",
+                ""
+            )
+        ).strip()
 
     if not text:
 
@@ -1954,8 +1990,11 @@ def add_memory():
     save_memory(memory)
 
     return jsonify({
-        "ok": True,
-        "memory": memory,
+        "ok":
+            True,
+
+        "memory":
+            memory
     })
 
 
@@ -1972,7 +2011,8 @@ def clear_memory():
     save_memory(memory)
 
     return jsonify({
-        "ok": True
+        "ok":
+            True
     })
 
 
@@ -1985,7 +2025,7 @@ if __name__ == "__main__":
     port = int(
         os.environ.get(
             "PORT",
-            "5000"
+            "10000"
         )
     )
 
@@ -2004,5 +2044,5 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=port,
-        debug=False,
+        debug=False
     )
