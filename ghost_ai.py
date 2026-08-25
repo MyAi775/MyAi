@@ -1,8 +1,12 @@
 import os
+import json
+
 from flask import Flask, request, jsonify, render_template_string
 from groq import Groq
 
+
 app = Flask(__name__)
+
 
 # ============================================================
 # CONFIG
@@ -17,13 +21,14 @@ client = Groq(api_key=API_KEY)
 
 MODEL = "openai/gpt-oss-120b"
 
-# Mbajmë request-et të vogla për limitin tënd aktual.
-MAX_HISTORY = 4
+MAX_HISTORY = 6
 MAX_OUTPUT_TOKENS = 1800
+
+MEMORY_FILE = "ghost_memory.json"
 
 
 # ============================================================
-# GHOST-AI SYSTEM PROMPT
+# SYSTEM PROMPT
 # ============================================================
 
 SYSTEM_PROMPT = """
@@ -37,38 +42,46 @@ PERSONALITY:
 - Simple question = simple answer.
 - Difficult question = clear explanation.
 - Do not over-explain simple questions.
+- Do not repeat the same phrases unnecessarily.
 
 ALBANIAN:
 - Understand Standard Albanian, Gheg, Tosk, slang, texting,
   abbreviations, spelling mistakes, missing accents and mixed English.
 - When the user writes Albanian, answer naturally in Albanian.
-- Understand casual forms like:
+- Understand:
   ca, cfar, sdi, ska, nji, bej, ma jep, ma rregullo,
   jo jo, e kam fjalen, si je, ca po ben.
+
+NATURAL CHAT:
+- If the user says "si je?", answer naturally.
+- Example:
+  "Mirë jam 😄 Po ti si je?"
+- Do not use unnatural Albanian translations.
+- Be friendly and conversational.
 
 SMART CONTEXT:
 - Use recent conversation context.
 - Understand follow-up questions.
-- Understand references like:
+- Understand references such as:
   kjo, ajo, kodi, ushtrimi, loja, versioni i fundit.
 - If the user corrects you, adapt immediately.
-- Do not make the user repeat information unnecessarily.
+- Do not make the user repeat clear information unnecessarily.
 
 CREATOR:
 - Ghost-AI was created by Matia.
-- If asked who created you, answer:
+- If asked who created you:
   "Ghost-AI was created by Matia."
 
-MATH:
+MATH EXPERT:
 - Be extremely accurate.
 - Never guess numerical answers.
-- Solve arithmetic, fractions, percentages, ratios,
+- Solve arithmetic, percentages, fractions, ratios,
   powers, roots, algebra, equations, inequalities,
   geometry, probability and statistics.
 - Verify calculations.
 - Show useful steps when appropriate.
 
-CODING:
+CODING EXPERT:
 - Be an expert coding assistant.
 - Support Python, JavaScript, HTML, CSS, Lua,
   Roblox Lua, CMD, PowerShell, JSON and common languages.
@@ -76,29 +89,31 @@ CODING:
 - Check syntax and indentation.
 - Preserve working code when debugging.
 - Explain errors clearly.
-- Never invent libraries, APIs, functions or parameters.
+- Never invent APIs, libraries, functions or parameters.
 - Never claim code was executed unless it actually was.
 
 DEBUGGING:
 - Analyze the exact error.
-- Find the likely cause.
-- Give a direct fix.
+- Find the most likely cause.
+- Give a direct practical fix.
 
 TUTOR:
-- Explain step by step when useful.
+- Explain concepts step by step when useful.
 - Match the user's level.
-- Give examples when helpful.
+- Give examples and practice problems when useful.
 
 CREATIVE:
 - Help with stories, horror stories, games,
-  ideas, names and creative projects.
+  ideas, names, projects and creative writing.
 
 GENERAL:
+- Answer general questions clearly.
 - Never invent facts.
 - If uncertain, say you are uncertain.
 
 RARE ALBANIAN WORDS:
 - Never invent meanings.
+- Never invent fake dictionary references or etymologies.
 - If highly uncertain, say:
   "Nuk jam i sigurt për kuptimin e kësaj fjale."
 
@@ -113,24 +128,83 @@ IMPORTANT:
 
 
 # ============================================================
-# SINGLE-PAGE WEB UI
+# MEMORY
+# ============================================================
+
+def load_memory():
+    if not os.path.exists(MEMORY_FILE):
+        return []
+
+    try:
+        with open(MEMORY_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        if isinstance(data, list):
+            return data
+
+        return []
+
+    except Exception:
+        return []
+
+
+def save_memory(items):
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as file:
+            json.dump(
+                items[-20:],
+                file,
+                ensure_ascii=False,
+                indent=2
+            )
+    except Exception:
+        pass
+
+
+memory = load_memory()
+
+
+def memory_text():
+    if not memory:
+        return "No saved memory."
+
+    return "\n".join(
+        f"- {item}"
+        for item in memory[-8:]
+    )
+
+
+# ============================================================
+# WEB UI
 # ============================================================
 
 HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
 <title>Ghost-AI</title>
 
-<meta name="description"
-      content="Ghost-AI — smart AI assistant for chat, math, coding, learning and creativity.">
+<meta
+    name="description"
+    content="Ghost-AI - smart AI assistant for chat, math, coding, learning and creativity."
+>
 
-<meta name="robots" content="index,follow">
+<meta
+    name="robots"
+    content="index,follow"
+>
 
 <style>
+
 * {
     box-sizing: border-box;
 }
@@ -149,31 +223,42 @@ body {
     overflow: hidden;
 }
 
-.app {
-    display: flex;
-    width: 100%;
-    height: 100vh;
+button,
+textarea {
+    font-family: inherit;
 }
 
-/* SIDEBAR */
+.app {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+}
+
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
 
 .sidebar {
-    width: 250px;
-    flex-shrink: 0;
+    width: 270px;
+    min-width: 270px;
     background: #171717;
     border-right: 1px solid #303030;
-    padding: 14px;
     display: flex;
     flex-direction: column;
+}
+
+.sidebar-top {
+    padding: 14px;
 }
 
 .brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 18px;
     font-size: 17px;
     font-weight: bold;
+    margin-bottom: 14px;
 }
 
 .logo {
@@ -189,28 +274,104 @@ body {
 
 .new-chat {
     width: 100%;
-    padding: 11px;
-    border-radius: 8px;
-    border: 1px solid #414141;
+    padding: 11px 12px;
     background: #242424;
-    color: #fff;
+    border: 1px solid #414141;
+    color: white;
+    border-radius: 8px;
     cursor: pointer;
-    font-size: 14px;
     text-align: left;
+    font-size: 14px;
 }
 
 .new-chat:hover {
     background: #303030;
 }
 
-.side-info {
-    margin-top: auto;
-    color: #888;
+.history-title {
+    padding: 8px 14px 6px;
+    color: #858585;
     font-size: 12px;
-    line-height: 1.9;
+    text-transform: uppercase;
 }
 
-/* MAIN */
+.chat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 10px;
+}
+
+.empty-history {
+    color: #777;
+    font-size: 12px;
+    padding: 12px 8px;
+}
+
+.chat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 2px;
+    border-radius: 8px;
+}
+
+.chat-item.active .chat-open {
+    background: #2f2f2f;
+}
+
+.chat-open {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: #ddd;
+    text-align: left;
+    padding: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+}
+
+.chat-open:hover {
+    background: #292929;
+}
+
+.chat-delete {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.chat-item:hover .chat-delete,
+.chat-item.active .chat-delete {
+    opacity: 1;
+}
+
+.chat-delete:hover {
+    background: #3a2a2a;
+    color: #ff8b8b;
+}
+
+.sidebar-bottom {
+    padding: 12px 14px;
+    border-top: 1px solid #303030;
+    color: #888;
+    font-size: 12px;
+    line-height: 1.8;
+}
+
+
+/* ============================================================
+   MAIN
+   ============================================================ */
 
 .main {
     flex: 1;
@@ -221,7 +382,6 @@ body {
 
 .topbar {
     height: 60px;
-    flex-shrink: 0;
     border-bottom: 1px solid #303030;
     display: flex;
     align-items: center;
@@ -239,7 +399,10 @@ body {
     font-size: 12px;
 }
 
-/* CHAT */
+
+/* ============================================================
+   CHAT
+   ============================================================ */
 
 .chat {
     flex: 1;
@@ -247,12 +410,15 @@ body {
 }
 
 .chat-inner {
-    width: min(850px, 100%);
+    width: min(860px, 100%);
     margin: 0 auto;
     padding: 28px 20px 180px;
 }
 
-/* WELCOME */
+
+/* ============================================================
+   WELCOME
+   ============================================================ */
 
 .welcome {
     min-height: 65vh;
@@ -286,10 +452,13 @@ body {
     line-height: 1.5;
 }
 
-/* PROMPTS */
+
+/* ============================================================
+   PROMPTS
+   ============================================================ */
 
 .prompt-grid {
-    width: min(680px, 100%);
+    width: min(700px, 100%);
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
@@ -304,14 +473,16 @@ body {
     padding: 13px;
     cursor: pointer;
     text-align: left;
-    font-size: 13px;
 }
 
 .prompt-button:hover {
     background: #333;
 }
 
-/* MESSAGES */
+
+/* ============================================================
+   MESSAGES
+   ============================================================ */
 
 .message {
     display: flex;
@@ -377,7 +548,10 @@ code {
     background: #363636;
 }
 
-/* TYPING */
+
+/* ============================================================
+   TYPING
+   ============================================================ */
 
 .typing {
     display: flex;
@@ -394,27 +568,32 @@ code {
 }
 
 .typing span:nth-child(2) {
-    animation-delay: 0.15s;
+    animation-delay: .15s;
 }
 
 .typing span:nth-child(3) {
-    animation-delay: 0.30s;
+    animation-delay: .30s;
 }
 
 @keyframes pulse {
+
     0%, 100% {
         opacity: .2;
     }
+
     50% {
         opacity: 1;
     }
 }
 
-/* INPUT */
+
+/* ============================================================
+   INPUT
+   ============================================================ */
 
 .composer-wrap {
     position: fixed;
-    left: 250px;
+    left: 270px;
     right: 0;
     bottom: 0;
     padding: 14px 20px 20px;
@@ -426,7 +605,7 @@ code {
 }
 
 .composer {
-    width: min(820px, 100%);
+    width: min(830px, 100%);
     margin: auto;
     padding: 8px;
     background: #2f2f2f;
@@ -471,6 +650,11 @@ textarea::placeholder {
     opacity: .4;
 }
 
+
+/* ============================================================
+   MOBILE
+   ============================================================ */
+
 @media (max-width: 700px) {
 
     .sidebar {
@@ -495,6 +679,7 @@ textarea::placeholder {
         grid-template-columns: 1fr;
     }
 }
+
 </style>
 </head>
 
@@ -504,92 +689,72 @@ textarea::placeholder {
 
     <aside class="sidebar">
 
-        <div class="brand">
-            <div class="logo">👻</div>
-            Ghost-AI
+        <div class="sidebar-top">
+
+            <div class="brand">
+                <div class="logo">👻</div>
+                Ghost-AI
+            </div>
+
+            <button
+                id="newChatButton"
+                class="new-chat"
+                type="button"
+            >
+                ＋ New chat
+            </button>
+
         </div>
 
-        <button
-            id="newChatButton"
-            class="new-chat"
-            type="button"
-        >
-            ＋ New chat
-        </button>
+        <div class="history-title">
+            Chats
+        </div>
 
-        <div class="side-info">
+        <div
+            id="chatList"
+            class="chat-list"
+        ></div>
+
+        <div class="sidebar-bottom">
             <div>● Ghost-AI Online</div>
             <div>GPT-OSS 120B</div>
             <div>Math Expert</div>
             <div>Coding Expert</div>
             <div>Smart Context</div>
+            <div>Memory</div>
             <div>Created by Matia</div>
         </div>
 
     </aside>
 
+
     <main class="main">
 
         <header class="topbar">
-            <div class="title">👻 Ghost-AI</div>
-            <div class="online">● Online</div>
-        </header>
 
-        <section id="chat" class="chat">
-
-            <div id="chatInner" class="chat-inner">
-
-                <div id="welcome" class="welcome">
-
-                    <div class="welcome-logo">👻</div>
-
-                    <h1>How can I help?</h1>
-
-                    <p>
-                        Chat, math, coding, learning and creativity.
-                    </p>
-
-                    <div class="prompt-grid">
-
-                        <button
-                            class="prompt-button"
-                            type="button"
-                            data-prompt="Me krijo një histori horror shumë interesante me një twist në fund."
-                        >
-                            👻 Horror story
-                        </button>
-
-                        <button
-                            class="prompt-button"
-                            type="button"
-                            data-prompt="Zgjidh 3x + 7 = 25 dhe ma shpjego hap pas hapi."
-                        >
-                            🧮 Math
-                        </button>
-
-                        <button
-                            class="prompt-button"
-                            type="button"
-                            data-prompt="Me krijo një mini game të plotë në JavaScript me coins, enemies, score dhe game over."
-                        >
-                            💻 JavaScript Game
-                        </button>
-
-                        <button
-                            class="prompt-button"
-                            type="button"
-                            data-prompt="Ma shpjego Black Hole në mënyrë interesante dhe të kuptueshme."
-                        >
-                            🌌 Black Hole
-                        </button>
-
-                    </div>
-
-                </div>
-
+            <div class="title">
+                👻 Ghost-AI
             </div>
 
+            <div class="online">
+                ● Online
+            </div>
+
+        </header>
+
+
+        <section
+            id="chat"
+            class="chat"
+        >
+
+            <div
+                id="chatInner"
+                class="chat-inner"
+            ></div>
+
         </section>
+
 
         <div class="composer-wrap">
 
@@ -617,17 +782,120 @@ textarea::placeholder {
 
 </div>
 
+
 <script>
 
-const input = document.getElementById("messageInput");
-const sendButton = document.getElementById("sendButton");
-const newChatButton = document.getElementById("newChatButton");
-const chat = document.getElementById("chat");
-const chatInner = document.getElementById("chatInner");
+const STORAGE_KEY = "ghost_ai_chats_v3";
 
-let conversation = [];
+const input =
+    document.getElementById("messageInput");
+
+const sendButton =
+    document.getElementById("sendButton");
+
+const newChatButton =
+    document.getElementById("newChatButton");
+
+const chatList =
+    document.getElementById("chatList");
+
+const chat =
+    document.getElementById("chat");
+
+const chatInner =
+    document.getElementById("chatInner");
+
+
+let chats = [];
+
+let activeChatId = null;
+
+
+/* ============================================================
+   STORAGE
+   ============================================================ */
+
+function loadChats() {
+
+    try {
+
+        const saved =
+            localStorage.getItem(STORAGE_KEY);
+
+        chats =
+            saved
+                ? JSON.parse(saved)
+                : [];
+
+        if (!Array.isArray(chats)) {
+            chats = [];
+        }
+
+    } catch {
+
+        chats = [];
+    }
+}
+
+
+function saveChats() {
+
+    try {
+
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(chats)
+        );
+
+    } catch {
+
+        // Ignore localStorage errors.
+
+    }
+}
+
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
+function createId() {
+
+    return (
+        Date.now().toString(36) +
+        Math.random()
+            .toString(36)
+            .slice(2, 9)
+    );
+}
+
+
+function makeTitle(text) {
+
+    const cleaned =
+        String(text)
+            .replace(/\s+/g, " ")
+            .trim();
+
+    if (!cleaned) {
+        return "New chat";
+    }
+
+    if (cleaned.length <= 34) {
+        return cleaned;
+    }
+
+    return (
+        cleaned
+            .slice(0, 34)
+            .trim() +
+        "..."
+    );
+}
+
 
 function escapeHtml(text) {
+
     return String(text)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -636,234 +904,310 @@ function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
+
 function formatAnswer(text) {
-    const parts = String(text).split("```");
+
+    const parts =
+        String(text).split("```");
+
     let html = "";
 
-    parts.forEach(function(part, index) {
 
-        if (index % 2 === 1) {
+    parts.forEach(
+        function(part, index) {
 
-            let lines = part.split("\n");
+            if (index % 2 === 1) {
 
-            if (
-                lines.length > 0 &&
-                /^[a-zA-Z0-9+#._-]+$/.test(lines[0].trim())
-            ) {
-                lines.shift();
+                let lines =
+                    part.split("\n");
+
+
+                if (
+                    lines.length > 0 &&
+                    /^[a-zA-Z0-9+#._-]+$/.test(
+                        lines[0].trim()
+                    )
+                ) {
+                    lines.shift();
+                }
+
+
+                const code =
+                    lines.join("\n");
+
+
+                html +=
+                    "<pre><code>" +
+                    escapeHtml(code) +
+                    "</code></pre>" +
+
+                    '<button ' +
+                    'class="copy-button" ' +
+                    'type="button">' +
+                    "Copy code" +
+                    "</button>";
+
+            } else {
+
+                html +=
+                    escapeHtml(part)
+                        .replace(/\n/g, "<br>");
+
             }
 
-            const code = lines.join("\n");
-
-            html +=
-                "<pre><code>" +
-                escapeHtml(code) +
-                "</code></pre>" +
-                '<button class="copy-button" type="button">Copy code</button>';
-
-        } else {
-
-            html += escapeHtml(part)
-                .replace(/\n/g, "<br>");
         }
-    });
+    );
+
 
     return html;
 }
 
-function scrollBottom() {
-    chat.scrollTop = chat.scrollHeight;
+
+function getActiveChat() {
+
+    return (
+        chats.find(
+            item =>
+                item.id === activeChatId
+        ) ||
+        null
+    );
 }
 
-function addMessage(role, text) {
 
-    const welcome = document.getElementById("welcome");
+/* ============================================================
+   CHAT LIST
+   ============================================================ */
 
-    if (welcome) {
-        welcome.style.display = "none";
-    }
+function renderChatList() {
 
-    const message = document.createElement("div");
+    chatList.innerHTML = "";
 
-    message.className = "message " + role;
 
-    const isAI = role === "assistant";
+    if (chats.length === 0) {
 
-    message.innerHTML =
-        '<div class="avatar">' +
-        (isAI ? "👻" : "M") +
-        "</div>" +
-        '<div style="flex:1">' +
-        '<div class="name">' +
-        (isAI ? "Ghost-AI" : "You") +
-        "</div>" +
-        '<div class="content">' +
-        (
-            isAI
-                ? formatAnswer(text)
-                : escapeHtml(text).replace(/\n/g, "<br>")
-        ) +
-        "</div>" +
-        "</div>";
+        const empty =
+            document.createElement("div");
 
-    chatInner.appendChild(message);
+        empty.className =
+            "empty-history";
 
-    message
-        .querySelectorAll(".copy-button")
-        .forEach(function(button) {
+        empty.textContent =
+            "No chats yet.";
 
-            button.addEventListener("click", async function() {
-
-                const pre = button.previousElementSibling;
-
-                if (!pre) {
-                    return;
-                }
-
-                try {
-                    await navigator.clipboard.writeText(pre.innerText);
-                    button.textContent = "Copied!";
-
-                    setTimeout(function() {
-                        button.textContent = "Copy code";
-                    }, 1000);
-
-                } catch {
-                    button.textContent = "Copy failed";
-                }
-
-            });
-        });
-
-    scrollBottom();
-}
-
-function showTyping() {
-
-    if (document.getElementById("typingMessage")) {
-        return;
-    }
-
-    const message = document.createElement("div");
-
-    message.id = "typingMessage";
-    message.className = "message assistant";
-
-    message.innerHTML =
-        '<div class="avatar">👻</div>' +
-        "<div>" +
-        '<div class="name">Ghost-AI</div>' +
-        '<div class="typing">' +
-        "<span></span><span></span><span></span>" +
-        "</div>" +
-        "</div>";
-
-    chatInner.appendChild(message);
-    scrollBottom();
-}
-
-function removeTyping() {
-
-    const typing =
-        document.getElementById("typingMessage");
-
-    if (typing) {
-        typing.remove();
-    }
-}
-
-async function sendMessage(customText = null) {
-
-    const text = (
-        customText !== null
-            ? String(customText)
-            : input.value
-    ).trim();
-
-    if (!text || sendButton.disabled) {
-        return;
-    }
-
-    input.value = "";
-    input.style.height = "auto";
-    sendButton.disabled = true;
-
-    addMessage("user", text);
-
-    conversation.push({
-        role: "user",
-        content: text
-    });
-
-    showTyping();
-
-    try {
-
-        const response = await fetch("/api/chat", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                messages: conversation
-            })
-        });
-
-        const data = await response.json();
-
-        removeTyping();
-
-        if (!response.ok) {
-
-            addMessage(
-                "assistant",
-                "⚠️ " +
-                (data.error || "Gabim gjatë komunikimit me AI.")
-            );
-
-            return;
-        }
-
-        const answer =
-            data.answer || "Nuk mora përgjigje.";
-
-        conversation.push({
-            role: "assistant",
-            content: answer
-        });
-
-        addMessage("assistant", answer);
-
-    } catch (error) {
-
-        removeTyping();
-
-        addMessage(
-            "assistant",
-            "⚠️ Nuk u lidh dot me Ghost-AI."
+        chatList.appendChild(
+            empty
         );
 
-        console.error(error);
-
-    } finally {
-
-        sendButton.disabled = false;
-        input.focus();
+        return;
     }
+
+
+    chats
+        .sort(
+            (a, b) =>
+                (b.updatedAt || 0) -
+                (a.updatedAt || 0)
+        )
+        .forEach(
+            function(chatData) {
+
+                const item =
+                    document.createElement(
+                        "div"
+                    );
+
+                item.className =
+                    "chat-item" +
+                    (
+                        chatData.id === activeChatId
+                            ? " active"
+                            : ""
+                    );
+
+
+                const open =
+                    document.createElement(
+                        "button"
+                    );
+
+                open.type =
+                    "button";
+
+                open.className =
+                    "chat-open";
+
+                open.title =
+                    chatData.title;
+
+                open.textContent =
+                    chatData.title;
+
+
+                open.addEventListener(
+                    "click",
+                    function() {
+
+                        activeChatId =
+                            chatData.id;
+
+                        saveChats();
+
+                        renderChatList();
+
+                        renderActiveChat();
+
+                        input.focus();
+
+                    }
+                );
+
+
+                const remove =
+                    document.createElement(
+                        "button"
+                    );
+
+                remove.type =
+                    "button";
+
+                remove.className =
+                    "chat-delete";
+
+                remove.title =
+                    "Delete chat";
+
+                remove.textContent =
+                    "🗑";
+
+
+                remove.addEventListener(
+                    "click",
+                    function(event) {
+
+                        event.stopPropagation();
+
+                        deleteChat(
+                            chatData.id
+                        );
+
+                    }
+                );
+
+
+                item.appendChild(open);
+
+                item.appendChild(remove);
+
+                chatList.appendChild(item);
+
+            }
+        );
 }
+
+
+/* ============================================================
+   DELETE CHAT
+   ============================================================ */
+
+function deleteChat(id) {
+
+    chats =
+        chats.filter(
+            item =>
+                item.id !== id
+        );
+
+
+    if (
+        activeChatId === id
+    ) {
+
+        activeChatId =
+            chats.length > 0
+                ? chats[0].id
+                : null;
+
+    }
+
+
+    saveChats();
+
+    renderChatList();
+
+    renderActiveChat();
+}
+
+
+/* ============================================================
+   NEW CHAT
+   ============================================================ */
 
 function newChat() {
 
-    conversation = [];
+    const chatData = {
+
+        id:
+            createId(),
+
+        title:
+            "New chat",
+
+        messages:
+            [],
+
+        createdAt:
+            Date.now(),
+
+        updatedAt:
+            Date.now()
+
+    };
+
+
+    chats.unshift(
+        chatData
+    );
+
+
+    activeChatId =
+        chatData.id;
+
+
+    saveChats();
+
+    renderChatList();
+
+    renderActiveChat();
+
+    input.focus();
+}
+
+
+/* ============================================================
+   WELCOME
+   ============================================================ */
+
+function renderWelcome() {
 
     chatInner.innerHTML = `
-        <div id="welcome" class="welcome">
 
-            <div class="welcome-logo">👻</div>
+        <div
+            id="welcome"
+            class="welcome"
+        >
 
-            <h1>How can I help?</h1>
+            <div class="welcome-logo">
+                👻
+            </div>
 
-            <p>Start a new Ghost-AI conversation.</p>
+            <h1>
+                How can I help?
+            </h1>
+
+            <p>
+                Chat, math, coding, learning and creativity.
+            </p>
 
             <div class="prompt-grid">
 
@@ -900,27 +1244,520 @@ function newChat() {
                 </button>
 
             </div>
+
         </div>
+
+    `;
+}
+
+
+/* ============================================================
+   RENDER ACTIVE CHAT
+   ============================================================ */
+
+function renderActiveChat() {
+
+    chatInner.innerHTML = "";
+
+
+    const active =
+        getActiveChat();
+
+
+    if (
+        !active ||
+        !active.messages ||
+        active.messages.length === 0
+    ) {
+
+        renderWelcome();
+
+        return;
+    }
+
+
+    active.messages.forEach(
+        function(message) {
+
+            addMessageToUI(
+                message.role,
+                message.content
+            );
+
+        }
+    );
+
+
+    scrollBottom();
+}
+
+
+/* ============================================================
+   MESSAGE UI
+   ============================================================ */
+
+function addMessageToUI(
+    role,
+    text
+) {
+
+    const message =
+        document.createElement(
+            "div"
+        );
+
+
+    message.className =
+        "message " + role;
+
+
+    const isAI =
+        role === "assistant";
+
+
+    message.innerHTML = `
+
+        <div class="avatar">
+            ${isAI ? "👻" : "M"}
+        </div>
+
+        <div style="flex:1">
+
+            <div class="name">
+                ${isAI ? "Ghost-AI" : "You"}
+            </div>
+
+            <div class="content">
+
+                ${
+                    isAI
+                        ? formatAnswer(text)
+                        : escapeHtml(text)
+                            .replace(
+                                /\n/g,
+                                "<br>"
+                            )
+                }
+
+            </div>
+
+        </div>
+
     `;
 
-    input.value = "";
-    input.style.height = "auto";
-    input.focus();
+
+    chatInner.appendChild(
+        message
+    );
+
+
+    message
+        .querySelectorAll(
+            ".copy-button"
+        )
+        .forEach(
+            function(button) {
+
+                button.addEventListener(
+                    "click",
+                    async function() {
+
+                        const pre =
+                            button.previousElementSibling;
+
+
+                        if (!pre) {
+                            return;
+                        }
+
+
+                        try {
+
+                            await navigator.clipboard.writeText(
+                                pre.innerText
+                            );
+
+
+                            button.textContent =
+                                "Copied!";
+
+
+                            setTimeout(
+                                function() {
+
+                                    button.textContent =
+                                        "Copy code";
+
+                                },
+                                1000
+                            );
+
+
+                        } catch {
+
+                            button.textContent =
+                                "Copy failed";
+
+                        }
+
+                    }
+                );
+
+            }
+        );
 }
+
+
+/* ============================================================
+   TYPING
+   ============================================================ */
+
+function showTyping() {
+
+    if (
+        document.getElementById(
+            "typingMessage"
+        )
+    ) {
+        return;
+    }
+
+
+    const message =
+        document.createElement(
+            "div"
+        );
+
+
+    message.id =
+        "typingMessage";
+
+
+    message.className =
+        "message assistant";
+
+
+    message.innerHTML = `
+
+        <div class="avatar">
+            👻
+        </div>
+
+        <div>
+
+            <div class="name">
+                Ghost-AI
+            </div>
+
+            <div class="typing">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+
+        </div>
+
+    `;
+
+
+    chatInner.appendChild(
+        message
+    );
+
+
+    scrollBottom();
+}
+
+
+function removeTyping() {
+
+    const typing =
+        document.getElementById(
+            "typingMessage"
+        );
+
+
+    if (typing) {
+        typing.remove();
+    }
+}
+
+
+/* ============================================================
+   SCROLL
+   ============================================================ */
+
+function scrollBottom() {
+
+    requestAnimationFrame(
+        function() {
+
+            chat.scrollTop =
+                chat.scrollHeight;
+
+        }
+    );
+}
+
+
+/* ============================================================
+   SEND MESSAGE
+   ============================================================ */
+
+async function sendMessage(
+    customText = null
+) {
+
+    let active =
+        getActiveChat();
+
+
+    if (!active) {
+
+        newChat();
+
+        active =
+            getActiveChat();
+    }
+
+
+    const text = (
+        customText !== null
+            ? String(customText)
+            : input.value
+    ).trim();
+
+
+    if (
+        !text ||
+        sendButton.disabled
+    ) {
+        return;
+    }
+
+
+    input.value =
+        "";
+
+    input.style.height =
+        "auto";
+
+
+    sendButton.disabled =
+        true;
+
+
+    /*
+        Automatic chat title from
+        the first message.
+    */
+
+    if (
+        active.messages.length === 0
+    ) {
+
+        active.title =
+            makeTitle(text);
+
+    }
+
+
+    /*
+        Save user message.
+    */
+
+    active.messages.push({
+
+        role:
+            "user",
+
+        content:
+            text
+
+    });
+
+
+    active.updatedAt =
+        Date.now();
+
+
+    saveChats();
+
+
+    renderChatList();
+
+    renderActiveChat();
+
+    showTyping();
+
+
+    /*
+        Keep only recent messages
+        in API request.
+    */
+
+    const recent =
+        active.messages.slice(
+            -MAX_HISTORY
+        );
+
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/chat",
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+                            messages:
+                                recent
+                        })
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        removeTyping();
+
+
+        if (!response.ok) {
+
+            active.messages.push({
+
+                role:
+                    "assistant",
+
+                content:
+                    "⚠️ " +
+                    (
+                        data.error ||
+                        "Gabim gjatë komunikimit me AI."
+                    )
+
+            });
+
+
+            active.updatedAt =
+                Date.now();
+
+
+            saveChats();
+
+            renderActiveChat();
+
+            return;
+        }
+
+
+        const answer =
+            data.answer ||
+            "Nuk mora përgjigje.";
+
+
+        active.messages.push({
+
+            role:
+                "assistant",
+
+            content:
+                answer
+
+        });
+
+
+        active.updatedAt =
+            Date.now();
+
+
+        saveChats();
+
+        renderChatList();
+
+        renderActiveChat();
+
+
+    } catch (error) {
+
+        removeTyping();
+
+
+        active.messages.push({
+
+            role:
+                "assistant",
+
+            content:
+                "⚠️ Nuk u lidh dot me Ghost-AI."
+
+        });
+
+
+        active.updatedAt =
+            Date.now();
+
+
+        saveChats();
+
+        renderActiveChat();
+
+
+        console.error(
+            "Ghost-AI error:",
+            error
+        );
+
+
+    } finally {
+
+        sendButton.disabled =
+            false;
+
+        input.focus();
+
+    }
+}
+
+
+/* ============================================================
+   BUTTON EVENTS
+   ============================================================ */
 
 sendButton.addEventListener(
     "click",
     function() {
+
         sendMessage();
+
     }
 );
+
 
 newChatButton.addEventListener(
     "click",
     function() {
+
         newChat();
+
     }
 );
+
+
+/* ============================================================
+   ENTER = SEND
+   SHIFT+ENTER = NEW LINE
+   ============================================================ */
 
 input.addEventListener(
     "keydown",
@@ -932,44 +1769,97 @@ input.addEventListener(
         ) {
 
             event.preventDefault();
+
             sendMessage();
+
         }
 
     }
 );
 
+
+/* ============================================================
+   AUTO RESIZE
+   ============================================================ */
+
 input.addEventListener(
     "input",
     function() {
 
-        this.style.height = "auto";
+        this.style.height =
+            "auto";
+
 
         this.style.height =
-            Math.min(this.scrollHeight, 180) + "px";
+            Math.min(
+                this.scrollHeight,
+                180
+            ) + "px";
 
     }
 );
+
+
+/* ============================================================
+   PROMPT BUTTONS
+   ============================================================ */
 
 document.addEventListener(
     "click",
     function(event) {
 
         const button =
-            event.target.closest(".prompt-button");
+            event.target.closest(
+                ".prompt-button"
+            );
+
 
         if (!button) {
             return;
         }
 
+
         const prompt =
-            button.getAttribute("data-prompt");
+            button.getAttribute(
+                "data-prompt"
+            );
+
 
         if (prompt) {
-            sendMessage(prompt);
+
+            sendMessage(
+                prompt
+            );
+
         }
 
     }
 );
+
+
+/* ============================================================
+   STARTUP
+   ============================================================ */
+
+loadChats();
+
+
+if (chats.length > 0) {
+
+    activeChatId =
+        chats[0].id;
+
+} else {
+
+    activeChatId =
+        null;
+
+}
+
+
+renderChatList();
+
+renderActiveChat();
 
 input.focus();
 
@@ -994,109 +1884,301 @@ def chat_api():
 
     try:
 
-        data = request.get_json(silent=True)
+        data =
+            request.get_json(
+                silent=True
+            )
 
-        if not isinstance(data, dict):
+
+        if not isinstance(
+            data,
+            dict
+        ):
+
             return jsonify({
-                "error": "Invalid request."
+                "error":
+                    "Invalid request."
             }), 400
 
-        incoming = data.get("messages", [])
 
-        if not isinstance(incoming, list):
+        incoming =
+            data.get(
+                "messages",
+                []
+            )
+
+
+        if not isinstance(
+            incoming,
+            list
+        ):
+
             return jsonify({
-                "error": "Invalid messages."
+                "error":
+                    "Invalid messages."
             }), 400
 
-        recent = incoming[-MAX_HISTORY:]
+
+        recent =
+            incoming[-MAX_HISTORY:]
+
 
         request_messages = [
+
             {
-                "role": "system",
-                "content": SYSTEM_PROMPT
+                "role":
+                    "system",
+
+                "content":
+                    (
+                        SYSTEM_PROMPT +
+                        "\n\nSaved memory:\n" +
+                        memory_text()
+                    )
+
             }
+
         ]
+
 
         for item in recent:
 
-            if not isinstance(item, dict):
+            if not isinstance(
+                item,
+                dict
+            ):
                 continue
 
-            role = item.get("role")
-            content = item.get("content")
 
-            if role not in ("user", "assistant"):
+            role =
+                item.get(
+                    "role"
+                )
+
+
+            content =
+                item.get(
+                    "content"
+                )
+
+
+            if role not in (
+                "user",
+                "assistant"
+            ):
                 continue
 
-            if not isinstance(content, str):
+
+            if not isinstance(
+                content,
+                str
+            ):
                 continue
+
 
             request_messages.append({
-                "role": role,
-                "content": content[:5000]
+
+                "role":
+                    role,
+
+                "content":
+                    content[:5000]
+
             })
 
-        if len(request_messages) < 2:
+
+        if len(
+            request_messages
+        ) < 2:
+
             return jsonify({
-                "error": "No user message."
+                "error":
+                    "No user message."
             }), 400
 
-        if request_messages[-1]["role"] != "user":
+
+        if (
+            request_messages[-1]["role"]
+            != "user"
+        ):
+
             return jsonify({
-                "error": "Last message must be from user."
+                "error":
+                    "Last message must be from user."
             }), 400
 
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=request_messages,
-            temperature=0.6,
-            top_p=0.95,
-            max_completion_tokens=MAX_OUTPUT_TOKENS
-        )
 
-        answer = response.choices[0].message.content
+        response =
+            client.chat.completions.create(
+
+                model =
+                    MODEL,
+
+                messages =
+                    request_messages,
+
+                temperature =
+                    0.6,
+
+                top_p =
+                    0.95,
+
+                max_completion_tokens =
+                    MAX_OUTPUT_TOKENS
+
+            )
+
+
+        answer =
+            response.choices[0].message.content
+
 
         if not answer:
-            answer = "Nuk mora përgjigje."
+
+            answer =
+                "Nuk mora përgjigje."
+
 
         return jsonify({
-            "answer": answer
+
+            "answer":
+                answer
+
         })
+
 
     except Exception as error:
 
-        error_text = str(error)
+        error_text =
+            str(error)
+
 
         if "413" in error_text:
+
             return jsonify({
+
                 "error":
                     "Kërkesa është shumë e madhe për limitin aktual të Groq."
+
             }), 413
 
+
         if "429" in error_text:
+
             return jsonify({
+
                 "error":
                     "U arrit limiti TPM i Groq. Provo përsëri pas pak."
+
             }), 429
 
+
         if "401" in error_text:
+
             return jsonify({
+
                 "error":
                     "GROQ_API_KEY nuk është e vlefshme."
+
             }), 401
 
+
         return jsonify({
-            "error": error_text
+
+            "error":
+                error_text
+
         }), 500
 
 
 # ============================================================
-# START
+# MEMORY API
+# ============================================================
+
+@app.route("/api/memory", methods=["GET"])
+def get_memory():
+
+    return jsonify({
+        "memory":
+            memory
+    })
+
+
+@app.route("/api/memory", methods=["POST"])
+def add_memory():
+
+    global memory
+
+    data =
+        request.get_json(
+            silent=True
+        ) or {}
+
+
+    text =
+        str(
+            data.get(
+                "text",
+                ""
+            )
+        ).strip()
+
+
+    if not text:
+
+        return jsonify({
+            "error":
+                "Memory is empty."
+        }), 400
+
+
+    memory.append(
+        text
+    )
+
+
+    save_memory(
+        memory
+    )
+
+
+    return jsonify({
+        "ok":
+            True
+    })
+
+
+@app.route("/api/memory", methods=["DELETE"])
+def clear_memory():
+
+    global memory
+
+    memory = []
+
+    save_memory(
+        memory
+    )
+
+
+    return jsonify({
+        "ok":
+            True
+    })
+
+
+# ============================================================
+# SERVER
 # ============================================================
 
 if __name__ == "__main__":
 
-    port = int(os.environ.get("PORT", "5000"))
+    port = int(
+        os.environ.get(
+            "PORT",
+            "5000"
+        )
+    )
+
 
     print()
     print("======================================")
@@ -1106,6 +2188,7 @@ if __name__ == "__main__":
     print(f"PORT  : {port}")
     print("======================================")
     print()
+
 
     app.run(
         host="0.0.0.0",
