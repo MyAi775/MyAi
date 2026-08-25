@@ -28,7 +28,7 @@ MEMORY_FILE = "ghost_memory.json"
 # ============================================================
 
 SYSTEM_PROMPT = """
-You are Ghost-AI, a smart, natural, friendly AI assistant created by Matia.
+You are Ghost-AI, a smart, natural and friendly AI assistant created by Matia.
 
 PERSONALITY:
 - Speak naturally and casually.
@@ -37,20 +37,19 @@ PERSONALITY:
 - Never sound robotic or repetitive.
 
 ALBANIAN:
-- Understand Standard Albanian, Gheg, Tosk, slang, texting,
-  abbreviations, spelling mistakes and mixed English.
+- Understand Albanian, Gheg, Tosk, slang, abbreviations,
+  spelling mistakes and mixed English.
 - When the user writes Albanian, answer naturally in Albanian.
 - Understand phrases like:
   ca, cfar, sdi, ska, nji, bej, ma jep, ma rregullo,
-  jo jo, e kam fjalen, ate, kjo, ajo.
+  jo jo, e kam fjalen, kjo, ajo.
 
 SMART CONTEXT:
 - Use recent conversation context.
 - Understand follow-up questions.
 - Understand references like:
   kjo, ajo, kodi, loja, scripti, problemi, versioni.
-- If the user corrects you, adapt immediately.
-- Do not ask for information already available.
+- Adapt immediately when the user corrects you.
 
 CREATOR:
 - Ghost-AI was created by Matia.
@@ -60,7 +59,7 @@ CREATOR:
 MEMORY:
 - Use saved memory when relevant.
 - Never invent memories.
-- Never claim something is remembered unless it is actually provided.
+- Never claim something is remembered unless it is actually available.
 
 MATH EXPERT:
 - Be extremely accurate.
@@ -82,7 +81,7 @@ DEBUGGING:
 - Analyze the exact error.
 - Find the likely cause.
 - Give a direct fix.
-- When useful, provide the corrected complete code.
+- When useful, provide corrected complete code.
 
 TUTOR:
 - Explain step by step when useful.
@@ -90,7 +89,7 @@ TUTOR:
 
 QUIZ:
 - Create quizzes with adjustable difficulty.
-- Keep track of the current quiz when context is available.
+- Remember the current quiz through conversation context.
 - Give answers and explanations when requested.
 
 CREATIVE:
@@ -149,16 +148,14 @@ memory = load_memory()
 def build_system_prompt():
     if memory:
         saved = "\n".join(
-            f"- {item}"
+            "- " + str(item)
             for item in memory[-10:]
         )
     else:
         saved = "No saved memory."
 
-    return (
-        SYSTEM_PROMPT
-        + "\n\nRELEVANT SAVED MEMORY:\n"
-        + saved
+    return SYSTEM_PROMPT + (
+        "\n\nRELEVANT SAVED MEMORY:\n" + saved
     )
 
 
@@ -174,16 +171,13 @@ HTML = r"""
 
 <meta charset="UTF-8">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Ghost-AI</title>
 
 <meta
-    name="description"
-    content="Ghost-AI - smart AI assistant for chat, math, coding, learning and creativity."
+name="description"
+content="Ghost-AI - smart AI assistant for chat, math, coding, learning and creativity."
 >
 
 <style>
@@ -216,8 +210,6 @@ textarea {
     height: 100vh;
     display: flex;
 }
-
-/* SIDEBAR */
 
 .sidebar {
     width: 270px;
@@ -257,7 +249,7 @@ textarea {
     padding: 11px 12px;
     background: #242424;
     border: 1px solid #414141;
-    color: white;
+    color: #fff;
     border-radius: 8px;
     cursor: pointer;
     text-align: left;
@@ -317,7 +309,7 @@ textarea {
 
 .chat-item.active .chat-open {
     background: #2f2f2f;
-    color: white;
+    color: #fff;
 }
 
 .chat-delete {
@@ -348,8 +340,6 @@ textarea {
     font-size: 12px;
     line-height: 1.8;
 }
-
-/* MAIN */
 
 .main {
     flex: 1;
@@ -388,8 +378,6 @@ textarea {
     margin: 0 auto;
     padding: 28px 20px 180px;
 }
-
-/* WELCOME */
 
 .welcome {
     min-height: 65vh;
@@ -446,8 +434,6 @@ textarea {
 .prompt-button:hover {
     background: #333;
 }
-
-/* MESSAGE */
 
 .message {
     display: flex;
@@ -509,8 +495,6 @@ code {
     font-size: 12px;
 }
 
-/* COMPOSER */
-
 .composer-wrap {
     position: fixed;
     left: 270px;
@@ -544,7 +528,7 @@ textarea {
     outline: none;
     border: 0;
     background: transparent;
-    color: white;
+    color: #fff;
     font-size: 15px;
     line-height: 1.45;
 }
@@ -560,7 +544,7 @@ textarea::placeholder {
     border: 0;
     border-radius: 10px;
     background: #10a37f;
-    color: white;
+    color: #fff;
     cursor: pointer;
     font-size: 19px;
 }
@@ -610,18 +594,16 @@ textarea::placeholder {
 
 <div class="brand">
 
-<div class="logo">
-👻
-</div>
+<div class="logo">👻</div>
 
 Ghost-AI
 
 </div>
 
 <button
-    id="newChatButton"
-    class="new-chat"
-    type="button"
+id="newChatButton"
+class="new-chat"
+type="button"
 >
 ＋ New chat
 </button>
@@ -633,8 +615,8 @@ Chats
 </div>
 
 <div
-    id="chatList"
-    class="chat-list"
+id="chatList"
+class="chat-list"
 ></div>
 
 <div class="sidebar-bottom">
@@ -667,13 +649,13 @@ Chats
 </header>
 
 <section
-    id="chat"
-    class="chat"
+id="chat"
+class="chat"
 >
 
 <div
-    id="chatInner"
-    class="chat-inner"
+id="chatInner"
+class="chat-inner"
 ></div>
 
 </section>
@@ -683,15 +665,15 @@ Chats
 <div class="composer">
 
 <textarea
-    id="messageInput"
-    rows="1"
-    placeholder="Message Ghost-AI..."
+id="messageInput"
+rows="1"
+placeholder="Message Ghost-AI..."
 ></textarea>
 
 <button
-    id="sendButton"
-    class="send-button"
-    type="button"
+id="sendButton"
+class="send-button"
+type="button"
 >
 ↑
 </button>
@@ -706,62 +688,33 @@ Chats
 
 <script>
 
-const STORAGE_KEY = "ghost_ai_chats_v8";
+const STORAGE_KEY = "ghost_ai_chats_v9";
 
 let chats = [];
 let activeChatId = null;
 let streaming = false;
 
-const input =
-    document.getElementById(
-        "messageInput"
-    );
-
-const sendButton =
-    document.getElementById(
-        "sendButton"
-    );
-
-const newChatButton =
-    document.getElementById(
-        "newChatButton"
-    );
-
-const chatList =
-    document.getElementById(
-        "chatList"
-    );
-
-const chat =
-    document.getElementById(
-        "chat"
-    );
-
-const chatInner =
-    document.getElementById(
-        "chatInner"
-    );
+const input = document.getElementById("messageInput");
+const sendButton = document.getElementById("sendButton");
+const newChatButton = document.getElementById("newChatButton");
+const chatList = document.getElementById("chatList");
+const chat = document.getElementById("chat");
+const chatInner = document.getElementById("chatInner");
 
 
 function loadChats() {
 
     try {
 
-        const saved =
-            localStorage.getItem(
-                STORAGE_KEY
-            );
+        const saved = localStorage.getItem(STORAGE_KEY);
 
-        chats =
-            saved
-                ? JSON.parse(saved)
-                : [];
+        chats = saved ? JSON.parse(saved) : [];
 
         if (!Array.isArray(chats)) {
             chats = [];
         }
 
-    } catch {
+    } catch (error) {
 
         chats = [];
     }
@@ -777,7 +730,7 @@ function saveChats() {
             JSON.stringify(chats)
         );
 
-    } catch {}
+    } catch (error) {}
 }
 
 
@@ -785,27 +738,26 @@ function createId() {
 
     return (
         Date.now().toString(36) +
-        Math.random()
-            .toString(36)
-            .slice(2, 9)
+        Math.random().toString(36).slice(2, 9)
     );
 }
 
 
 function makeTitle(text) {
 
-    const clean =
-        String(text)
-            .replace(/\s+/g, " ")
-            .trim();
+    const clean = String(text)
+        .replace(/\s+/g, " ")
+        .trim();
 
     if (!clean) {
         return "New chat";
     }
 
-    return clean.length <= 38
-        ? clean
-        : clean.slice(0, 38).trim() + "...";
+    if (clean.length <= 38) {
+        return clean;
+    }
+
+    return clean.slice(0, 38).trim() + "...";
 }
 
 
@@ -822,72 +774,53 @@ function escapeHtml(text) {
 
 function scrollBottom() {
 
-    requestAnimationFrame(() => {
-
-        chat.scrollTop =
-            chat.scrollHeight;
-
+    requestAnimationFrame(function () {
+        chat.scrollTop = chat.scrollHeight;
     });
 }
 
 
 function getActiveChat() {
 
-    return chats.find(
-        item =>
-            item.id === activeChatId
-    ) || null;
+    return chats.find(function (item) {
+        return item.id === activeChatId;
+    }) || null;
 }
 
 
 function formatAnswer(text) {
 
-    const parts =
-        String(text).split("```");
+    const parts = String(text).split("```");
 
     let html = "";
 
-    parts.forEach(
-        (part, index) => {
+    parts.forEach(function (part, index) {
 
-            if (index % 2 === 1) {
+        if (index % 2 === 1) {
 
-                const lines =
-                    part.split("\n");
+            const lines = part.split("\n");
 
-                if (
-                    lines.length > 0 &&
-                    /^[a-zA-Z0-9+#._-]+$/.test(
-                        lines[0].trim()
-                    )
-                ) {
-
-                    lines.shift();
-
-                }
-
-                const code =
-                    lines.join("\n");
-
-                html +=
-                    "<pre><code>" +
-                    escapeHtml(code) +
-                    "</code></pre>" +
-                    '<button class="copy-button" type="button">' +
-                    "Copy code" +
-                    "</button>";
-
-            } else {
-
-                html +=
-                    escapeHtml(part)
-                        .replace(
-                            /\n/g,
-                            "<br>"
-                        );
+            if (
+                lines.length > 0 &&
+                /^[a-zA-Z0-9+#._-]+$/.test(lines[0].trim())
+            ) {
+                lines.shift();
             }
+
+            const code = lines.join("\n");
+
+            html +=
+                "<pre><code>" +
+                escapeHtml(code) +
+                "</code></pre>" +
+                '<button class="copy-button" type="button">Copy code</button>';
+
+        } else {
+
+            html += escapeHtml(part)
+                .replace(/\n/g, "<br>");
         }
-    );
+    });
 
     return html;
 }
@@ -899,92 +832,75 @@ function renderChatList() {
 
     if (chats.length === 0) {
 
-        const empty =
-            document.createElement("div");
+        const empty = document.createElement("div");
 
-        empty.className =
-            "empty-history";
-
-        empty.textContent =
-            "No chats yet.";
+        empty.className = "empty-history";
+        empty.textContent = "No chats yet.";
 
         chatList.appendChild(empty);
 
         return;
     }
 
-    const ordered =
-        [...chats].sort(
-            (a, b) =>
-                (b.updatedAt || 0) -
-                (a.updatedAt || 0)
+    const ordered = [...chats].sort(function (a, b) {
+
+        return (
+            (b.updatedAt || 0) -
+            (a.updatedAt || 0)
         );
 
-    ordered.forEach(
-        chatData => {
+    });
 
-            const item =
-                document.createElement("div");
+    ordered.forEach(function (chatData) {
 
-            item.className =
-                "chat-item" +
-                (
-                    chatData.id === activeChatId
-                        ? " active"
-                        : ""
-                );
+        const item = document.createElement("div");
 
-            const open =
-                document.createElement("button");
+        item.className =
+            "chat-item" +
+            (
+                chatData.id === activeChatId
+                    ? " active"
+                    : ""
+            );
 
-            open.type = "button";
-            open.className =
-                "chat-open";
+        const open = document.createElement("button");
 
-            open.textContent =
-                chatData.title ||
-                "New chat";
+        open.type = "button";
+        open.className = "chat-open";
+        open.textContent = chatData.title || "New chat";
 
-            open.onclick = () => {
+        open.onclick = function () {
 
-                if (streaming) {
-                    return;
-                }
+            if (streaming) {
+                return;
+            }
 
-                activeChatId =
-                    chatData.id;
+            activeChatId = chatData.id;
 
-                renderChatList();
-                renderActiveChat();
+            renderChatList();
+            renderActiveChat();
 
-                input.focus();
-            };
+            input.focus();
+        };
 
-            const remove =
-                document.createElement("button");
+        const remove = document.createElement("button");
 
-            remove.type = "button";
-            remove.className =
-                "chat-delete";
+        remove.type = "button";
+        remove.className = "chat-delete";
+        remove.textContent = "🗑";
 
-            remove.textContent = "🗑";
+        remove.onclick = function (event) {
 
-            remove.onclick =
-                event => {
+            event.stopPropagation();
 
-                    event.stopPropagation();
+            deleteChat(chatData.id);
+        };
 
-                    deleteChat(
-                        chatData.id
-                    );
-                };
+        item.appendChild(open);
+        item.appendChild(remove);
 
-            item.appendChild(open);
-            item.appendChild(remove);
-
-            chatList.appendChild(item);
-        }
-    );
+        chatList.appendChild(item);
+    });
 }
 
 
@@ -1009,8 +925,7 @@ function newChat() {
 
     chats.unshift(chatData);
 
-    activeChatId =
-        chatData.id;
+    activeChatId = chatData.id;
 
     saveChats();
 
@@ -1027,15 +942,14 @@ function deleteChat(id) {
         return;
     }
 
-    chats =
-        chats.filter(
-            item => item.id !== id
-        );
+    chats = chats.filter(function (item) {
+        return item.id !== id;
+    });
 
     if (activeChatId === id) {
 
         activeChatId =
-            chats.length
+            chats.length > 0
                 ? chats[0].id
                 : null;
     }
@@ -1110,8 +1024,7 @@ function renderActiveChat() {
 
     chatInner.innerHTML = "";
 
-    const active =
-        getActiveChat();
+    const active = getActiveChat();
 
     if (
         !active ||
@@ -1124,15 +1037,13 @@ function renderActiveChat() {
         return;
     }
 
-    active.messages.forEach(
-        message => {
+    active.messages.forEach(function (message) {
 
-            addMessageToUI(
-                message.role,
-                message.content
-            );
-        }
-    );
+        addMessageToUI(
+            message.role,
+            message.content
+        );
+    });
 
     scrollBottom();
 }
@@ -1142,87 +1053,63 @@ function wireCopyButtons(container) {
 
     container
         .querySelectorAll(".copy-button")
-        .forEach(
-            button => {
+        .forEach(function (button) {
 
-                button.onclick =
-                    async () => {
+            button.onclick = async function () {
 
-                        const pre =
-                            button.previousElementSibling;
+                const pre = button.previousElementSibling;
 
-                        if (!pre) {
-                            return;
-                        }
+                if (!pre) {
+                    return;
+                }
 
-                        try {
+                try {
 
-                            await navigator
-                                .clipboard
-                                .writeText(
-                                    pre.innerText
-                                );
+                    await navigator.clipboard.writeText(
+                        pre.innerText
+                    );
 
-                            button.textContent =
-                                "Copied!";
+                    button.textContent = "Copied!";
 
-                            setTimeout(
-                                () => {
+                    setTimeout(function () {
+                        button.textContent = "Copy code";
+                    }, 1000);
 
-                                    button.textContent =
-                                        "Copy code";
+                } catch (error) {
 
-                                },
-                                1000
-                            );
-
-                        } catch {
-
-                            button.textContent =
-                                "Copy failed";
-                        }
-                    };
-            }
-        );
+                    button.textContent = "Copy failed";
+                }
+            };
+        });
 }
 
 
-function addMessageToUI(
-    role,
-    text
-) {
+function addMessageToUI(role, text) {
 
-    const message =
-        document.createElement("div");
+    const message = document.createElement("div");
 
-    message.className =
-        "message " + role;
+    message.className = "message " + role;
 
-    const ai =
-        role === "assistant";
+    const isAI = role === "assistant";
 
     message.innerHTML = `
 
         <div class="avatar">
-            ${ai ? "👻" : "M"}
+            ${isAI ? "👻" : "M"}
         </div>
 
         <div style="flex:1">
 
             <div class="name">
-                ${ai ? "Ghost-AI" : "You"}
+                ${isAI ? "Ghost-AI" : "You"}
             </div>
 
             <div class="content">
 
                 ${
-                    ai
+                    isAI
                         ? formatAnswer(text)
-                        : escapeHtml(text)
-                            .replace(
-                                /\n/g,
-                                "<br>"
-                            )
+                        : escapeHtml(text).replace(/\n/g, "<br>")
                 }
 
             </div>
@@ -1238,11 +1125,9 @@ function addMessageToUI(
 
 function createStreamingMessage() {
 
-    const message =
-        document.createElement("div");
+    const message = document.createElement("div");
 
-    message.className =
-        "message assistant";
+    message.className = "message assistant";
 
     message.innerHTML = `
 
@@ -1258,7 +1143,7 @@ function createStreamingMessage() {
 
             <div
                 class="content"
-                id="streamContent"
+                data-stream-content="true"
             ></div>
 
         </div>
@@ -1267,34 +1152,27 @@ function createStreamingMessage() {
     chatInner.appendChild(message);
 
     return {
-
         root: message,
-
-        content:
-            message.querySelector(
-                "#streamContent"
-            )
+        content: message.querySelector(
+            '[data-stream-content="true"]'
+        )
     };
 }
 
 
-async function sendMessage(
-    customText = null
-) {
+async function sendMessage(customText = null) {
 
     if (streaming) {
         return;
     }
 
-    let active =
-        getActiveChat();
+    let active = getActiveChat();
 
     if (!active) {
 
         newChat();
 
-        active =
-            getActiveChat();
+        active = getActiveChat();
     }
 
     const text = (
@@ -1316,9 +1194,7 @@ async function sendMessage(
     input.style.height = "auto";
 
     if (active.messages.length === 0) {
-
-        active.title =
-            makeTitle(text);
+        active.title = makeTitle(text);
     }
 
     active.messages.push({
@@ -1326,124 +1202,92 @@ async function sendMessage(
         content: text
     });
 
-    active.updatedAt =
-        Date.now();
+    active.updatedAt = Date.now();
 
     saveChats();
 
     renderChatList();
     renderActiveChat();
 
-    const streamUI =
-        createStreamingMessage();
+    const streamUI = createStreamingMessage();
 
     let fullAnswer = "";
 
     try {
 
-        const response =
-            await fetch(
-                "/api/chat/stream",
-                {
+        const response = await fetch(
+            "/api/chat/stream",
+            {
+                method: "POST",
 
-                    method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
 
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-
-                    body:
-                        JSON.stringify({
-                            messages:
-                                active.messages.slice(
-                                    -12
-                                )
-                        })
-                }
-            );
+                body: JSON.stringify({
+                    messages: active.messages.slice(-12)
+                })
+            }
+        );
 
         if (!response.ok) {
 
-            let message =
-                "Server error.";
+            let message = "Server error.";
 
             try {
 
-                const data =
-                    await response.json();
+                const data = await response.json();
 
-                message =
-                    data.error ||
-                    message;
+                message = data.error || message;
 
-            } catch {}
+            } catch (error) {}
 
             throw new Error(message);
         }
 
         if (!response.body) {
-
             throw new Error(
-                "Streaming is not supported."
+                "Streaming is not supported by this browser."
             );
         }
 
-        const reader =
-            response.body.getReader();
-
-        const decoder =
-            new TextDecoder();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
 
         let buffer = "";
 
         while (true) {
 
-            const result =
-                await reader.read();
+            const result = await reader.read();
 
             if (result.done) {
                 break;
             }
 
-            buffer +=
-                decoder.decode(
-                    result.value,
-                    {
-                        stream: true
-                    }
-                );
+            buffer += decoder.decode(
+                result.value,
+                { stream: true }
+            );
 
-            const packets =
-                buffer.split("\n\n");
+            const packets = buffer.split("\n\n");
 
-            buffer =
-                packets.pop() || "";
+            buffer = packets.pop() || "";
 
-            for (
-                const packet of packets
-            ) {
+            for (const packet of packets) {
 
-                const line =
-                    packet
-                        .split("\n")
-                        .find(
-                            value =>
-                                value.startsWith(
-                                    "data: "
-                                )
-                        );
+                const line = packet
+                    .split("\n")
+                    .find(function (value) {
+                        return value.startsWith("data: ");
+                    });
 
                 if (!line) {
                     continue;
                 }
 
-                const payload =
-                    line.slice(6);
+                const payload = line.slice(6);
 
-                if (
-                    payload === "[DONE]"
-                ) {
+                if (payload === "[DONE]") {
                     continue;
                 }
 
@@ -1451,49 +1295,34 @@ async function sendMessage(
 
                 try {
 
-                    parsed =
-                        JSON.parse(
-                            payload
-                        );
+                    parsed = JSON.parse(payload);
 
-                } catch {
+                } catch (error) {
 
                     continue;
                 }
 
-                if (
-                    parsed.type ===
-                    "delta"
-                ) {
+                if (parsed.type === "delta") {
 
-                    fullAnswer +=
-                        parsed.content ||
-                        "";
+                    fullAnswer += parsed.content || "";
 
-                    streamUI.content
-                        .textContent =
-                            fullAnswer;
+                    streamUI.content.textContent =
+                        fullAnswer;
 
                     scrollBottom();
                 }
 
-                if (
-                    parsed.type ===
-                    "error"
-                ) {
+                if (parsed.type === "error") {
 
                     throw new Error(
-                        parsed.message ||
-                        "AI error."
+                        parsed.message || "AI error."
                     );
                 }
             }
         }
 
         if (!fullAnswer) {
-
-            fullAnswer =
-                "Nuk mora përgjigje.";
+            fullAnswer = "Nuk mora përgjigje.";
         }
 
         active.messages.push({
@@ -1501,8 +1330,7 @@ async function sendMessage(
             content: fullAnswer
         });
 
-        active.updatedAt =
-            Date.now();
+        active.updatedAt = Date.now();
 
         saveChats();
 
@@ -1533,8 +1361,7 @@ async function sendMessage(
             content: errorText
         });
 
-        active.updatedAt =
-            Date.now();
+        active.updatedAt = Date.now();
 
         saveChats();
 
@@ -1552,17 +1379,25 @@ async function sendMessage(
 }
 
 
-sendButton.onclick =
-    () => sendMessage();
+sendButton.addEventListener(
+    "click",
+    function () {
+        sendMessage();
+    }
+);
 
 
-newChatButton.onclick =
-    () => newChat();
+newChatButton.addEventListener(
+    "click",
+    function () {
+        newChat();
+    }
+);
 
 
 input.addEventListener(
     "keydown",
-    event => {
+    function (event) {
 
         if (
             event.key === "Enter" &&
@@ -1594,21 +1429,17 @@ input.addEventListener(
 
 document.addEventListener(
     "click",
-    event => {
+    function (event) {
 
         const button =
-            event.target.closest(
-                ".prompt-button"
-            );
+            event.target.closest(".prompt-button");
 
         if (!button) {
             return;
         }
 
         const prompt =
-            button.getAttribute(
-                "data-prompt"
-            );
+            button.getAttribute("data-prompt");
 
         if (prompt) {
             sendMessage(prompt);
@@ -1619,10 +1450,8 @@ document.addEventListener(
 
 loadChats();
 
-if (chats.length) {
-
-    activeChatId =
-        chats[0].id;
+if (chats.length > 0) {
+    activeChatId = chats[0].id;
 }
 
 renderChatList();
@@ -1638,13 +1467,17 @@ input.focus();
 
 
 # ============================================================
-# ROUTES
+# HOME
 # ============================================================
 
 @app.route("/")
 def home():
     return render_template_string(HTML)
 
+
+# ============================================================
+# HEALTH
+# ============================================================
 
 @app.route("/health")
 def health():
@@ -1657,23 +1490,19 @@ def health():
 
 
 # ============================================================
-# MESSAGE BUILDER
+# BUILD MESSAGES
 # ============================================================
 
 def build_messages(incoming):
 
     if not isinstance(incoming, list):
-        raise ValueError(
-            "Invalid messages."
-        )
+        raise ValueError("Invalid messages.")
 
     request_messages = [
-
         {
             "role": "system",
             "content": build_system_prompt()
         }
-
     ]
 
     for item in incoming[-MAX_HISTORY:]:
@@ -1684,10 +1513,7 @@ def build_messages(incoming):
         role = item.get("role")
         content = item.get("content")
 
-        if role not in (
-            "user",
-            "assistant"
-        ):
+        if role not in ("user", "assistant"):
             continue
 
         if not isinstance(content, str):
@@ -1697,22 +1523,14 @@ def build_messages(incoming):
             continue
 
         request_messages.append({
-
             "role": role,
-
-            "content":
-                content[:MAX_MESSAGE_CHARS]
-
+            "content": content[:MAX_MESSAGE_CHARS]
         })
 
     if len(request_messages) < 2:
-
-        raise ValueError(
-            "No user message."
-        )
+        raise ValueError("No user message.")
 
     if request_messages[-1]["role"] != "user":
-
         raise ValueError(
             "Last message must be from user."
         )
@@ -1721,50 +1539,35 @@ def build_messages(incoming):
 
 
 # ============================================================
-# NORMAL CHAT
+# NORMAL CHAT API
 # ============================================================
 
-@app.route(
-    "/api/chat",
-    methods=["POST"]
-)
+@app.route("/api/chat", methods=["POST"])
 def chat_api():
 
     try:
 
-        data =
-            request.get_json(
-                silent=True
-            )
+        data = request.get_json(silent=True)
 
         if not isinstance(data, dict):
 
             return jsonify({
-                "error":
-                    "Invalid request."
+                "error": "Invalid request."
             }), 400
 
         request_messages = build_messages(
-            data.get(
-                "messages",
-                []
-            )
+            data.get("messages", [])
         )
 
-        response =
-            client.chat.completions.create(
-                model=MODEL,
-                messages=request_messages,
-                temperature=0.5,
-                top_p=0.9,
-                max_completion_tokens=
-                    MAX_OUTPUT_TOKENS
-            )
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=request_messages,
+            temperature=0.5,
+            top_p=0.9,
+            max_completion_tokens=MAX_OUTPUT_TOKENS
+        )
 
-        answer =
-            response.choices[
-                0
-            ].message.content
+        answer = response.choices[0].message.content
 
         if not answer:
             answer = "Nuk mora përgjigje."
@@ -1776,70 +1579,51 @@ def chat_api():
     except ValueError as error:
 
         return jsonify({
-            "error":
-                str(error)
+            "error": str(error)
         }), 400
 
     except Exception as error:
 
-        print(
-            "CHAT ERROR:",
-            repr(error)
-        )
+        print("CHAT ERROR:", repr(error))
 
         return jsonify({
-            "error":
-                str(error)
+            "error": str(error)
         }), 500
 
 
 # ============================================================
-# STREAM CHAT
+# STREAM CHAT API
 # ============================================================
 
-@app.route(
-    "/api/chat/stream",
-    methods=["POST"]
-)
+@app.route("/api/chat/stream", methods=["POST"])
 def chat_stream():
 
     try:
 
-        data = request.get_json(
-            silent=True
-        )
+        data = request.get_json(silent=True)
 
         if not isinstance(data, dict):
 
             return jsonify({
-                "error":
-                    "Invalid request."
+                "error": "Invalid request."
             }), 400
 
         request_messages = build_messages(
-            data.get(
-                "messages",
-                []
-            )
+            data.get("messages", [])
         )
 
     except ValueError as error:
 
         return jsonify({
-            "error":
-                str(error)
+            "error": str(error)
         }), 400
 
     except Exception as error:
 
-        print(
-            "REQUEST ERROR:",
-            repr(error)
-        )
+        print("REQUEST ERROR:", repr(error))
 
         return jsonify({
-            "error":
-                "Invalid request."
+            "error": "Invalid request."
         }), 400
 
 
@@ -1848,51 +1632,39 @@ def chat_stream():
 
         try:
 
-            stream =
-                client.chat.completions.create(
-                    model=MODEL,
-                    messages=request_messages,
-                    temperature=0.5,
-                    top_p=0.9,
-                    max_completion_tokens=
-                        MAX_OUTPUT_TOKENS,
-                    stream=True
-                )
+            stream = client.chat.completions.create(
+                model=MODEL,
+                messages=request_messages,
+                temperature=0.5,
+                top_p=0.9,
+                max_completion_tokens=MAX_OUTPUT_TOKENS,
+                stream=True
+            )
 
             for chunk in stream:
 
                 if not chunk.choices:
                     continue
 
-                delta =
-                    chunk.choices[
-                        0
-                    ].delta.content
+                delta = chunk.choices[0].delta.content
 
                 if delta:
 
-                    payload =
-                        json.dumps(
-                            {
-                                "type":
-                                    "delta",
-
-                                "content":
-                                    delta
-                            },
-
-                            ensure_ascii=False
-                        )
-
-                    yield (
-                        "data: "
-                        + payload
-                        + "\n\n"
+                    payload = json.dumps(
+                        {
+                            "type": "delta",
+                            "content": delta
+                        },
+                        ensure_ascii=False
                     )
 
-            yield (
-                "data: [DONE]\n\n"
-            )
+                    yield (
+                        "data: " +
+                        payload +
+                        "\n\n"
+                    )
+
+            yield "data: [DONE]\n\n"
 
         except Exception as error:
 
@@ -1901,88 +1673,69 @@ def chat_stream():
                 repr(error)
             )
 
-            payload =
-                json.dumps(
-                    {
-                        "type":
-                            "error",
-
-                        "message":
-                            str(error)
-                    },
-
-                    ensure_ascii=False
-                )
+            payload = json.dumps(
+                {
+                    "type": "error",
+                    "message": str(error)
+                },
+                ensure_ascii=False
+            )
 
             yield (
-                "data: "
-                + payload
-                + "\n\n"
+                "data: " +
+                payload +
+                "\n\n"
             )
 
 
     return Response(
-
         generate(),
-
-        mimetype=
-            "text/event-stream",
-
+        mimetype="text/event-stream",
         headers={
-            "Cache-Control":
-                "no-cache",
-
-            "X-Accel-Buffering":
-                "no",
-
-            "Connection":
-                "keep-alive"
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive"
         }
     )
 
 
 # ============================================================
-# MEMORY
+# MEMORY GET
 # ============================================================
 
-@app.route(
-    "/api/memory",
-    methods=["GET"]
-)
+@app.route("/api/memory", methods=["GET"])
 def get_memory():
 
     return jsonify({
-        "memory":
-            memory
+        "memory": memory
     })
 
 
-@app.route(
-    "/api/memory",
-    methods=["POST"]
-)
+# ============================================================
+# MEMORY ADD
+# ============================================================
+
+@app.route("/api/memory", methods=["POST"])
 def add_memory():
 
     global memory
 
-    data =
-        request.get_json(
-            silent=True
-        ) or {}
+    try:
 
-    text =
-        str(
-            data.get(
-                "text",
-                ""
-            )
-        ).strip()
+        data = request.get_json(silent=True) or {}
+
+    except Exception:
+
+        data = {}
+
+    text = str(
+        data.get("text", "")
+    ).strip()
 
     if not text:
 
         return jsonify({
-            "error":
-                "Memory is empty."
+            "error": "Memory is empty."
         }), 400
 
     memory.append(text)
@@ -1990,18 +1743,16 @@ def add_memory():
     save_memory(memory)
 
     return jsonify({
-        "ok":
-            True,
-
-        "memory":
-            memory
+        "ok": True,
+        "memory": memory
     })
 
 
-@app.route(
-    "/api/memory",
-    methods=["DELETE"]
-)
+# ============================================================
+# MEMORY CLEAR
+# ============================================================
+
+@app.route("/api/memory", methods=["DELETE"])
 def clear_memory():
 
     global memory
@@ -2011,8 +1762,7 @@ def clear_memory():
     save_memory(memory)
 
     return jsonify({
-        "ok":
-            True
+        "ok": True
     })
 
 
@@ -2029,9 +1779,9 @@ if __name__ == "__main__":
         )
     )
 
-    print("=" * 45)
-    print("          GHOST-AI ONLINE")
-    print("=" * 45)
+    print("=" * 50)
+    print("             GHOST-AI ONLINE")
+    print("=" * 50)
     print("MODEL:", MODEL)
     print("PORT:", port)
     print("SMART CONTEXT: ON")
@@ -2039,7 +1789,7 @@ if __name__ == "__main__":
     print("MATH EXPERT: ON")
     print("CODING EXPERT: ON")
     print("QUIZ MODE: ON")
-    print("=" * 45)
+    print("=" * 50)
 
     app.run(
         host="0.0.0.0",
