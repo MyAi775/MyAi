@@ -1,21 +1,41 @@
 import os
 import json
-from flask import Flask, request, jsonify, Response, render_template_string, stream_with_context
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    Response,
+    render_template_string,
+    stream_with_context,
+)
 from groq import Groq
 
 app = Flask(__name__)
 
+# ============================================================
+# CONFIG
+# ============================================================
+
 API_KEY = os.environ.get("GROQ_API_KEY")
+
 if not API_KEY:
-    raise RuntimeError("GROQ_API_KEY nuk është vendosur.")
+    raise RuntimeError(
+        "GROQ_API_KEY nuk është vendosur në Render Environment Variables."
+    )
 
 client = Groq(api_key=API_KEY)
 
 MODEL = "openai/gpt-oss-120b"
-MAX_HISTORY = 6
+
+MAX_HISTORY = 12
 MAX_OUTPUT_TOKENS = 1400
 MAX_MESSAGE_CHARS = 5000
 MEMORY_FILE = "ghost_memory.json"
+
+
+# ============================================================
+# SYSTEM PROMPT
+# ============================================================
 
 SYSTEM_PROMPT = """
 You are Ghost-AI, a smart, natural, friendly AI assistant created by Matia.
@@ -29,39 +49,53 @@ PERSONALITY:
 - Hard question = clear and useful explanation.
 - Do not over-explain simple questions.
 - Do not repeat the same phrases unnecessarily.
+- Be friendly and helpful.
 
 ALBANIAN:
 - Understand Standard Albanian, Gheg, Tosk, slang, texting,
   abbreviations, spelling mistakes, missing accents and mixed English.
 - When the user writes Albanian, answer naturally in Albanian.
-- Understand: ca, cfar, sdi, ska, nji, bej, ma jep, ma rregullo,
+- Understand phrases such as:
+  ca, cfar, sdi, ska, nji, bej, ma jep, ma rregullo,
   jo jo, e kam fjalen, si je, ca po ben.
 
 NATURAL CHAT:
-- User: "si je?"
-- Natural answer: "Mirë jam 😄 Po ti si je?"
-- Do not use awkward translated Albanian.
+- Understand casual conversations.
+- Understand follow-up questions.
+- Understand references like:
+  kjo, ajo, kodi, ushtrimi, loja, versioni i fundit,
+  ai script, ajo faqe, problemi.
 
 SMART CONTEXT:
-- Use recent conversation context.
-- Understand follow-up questions and references such as:
-  kjo, ajo, kodi, ushtrimi, loja, versioni i fundit.
-- If the user corrects you, adapt immediately.
+- Use the recent conversation history.
+- Keep track of the current topic.
+- If the user says "jo jo", "e kam fjalen...", "ate te parin",
+  or similar, use the previous context to understand what they mean.
+- If the user corrects you, immediately adapt.
+- Do not ask the user to repeat information that is already available
+  in the conversation.
+
+MEMORY:
+- Use saved memory when relevant.
+- Never claim something is remembered unless it is actually present
+  in the supplied memory.
+- Do not invent personal memories.
 
 CREATOR:
 - Ghost-AI was created by Matia.
 - If asked who created you, say:
   "Ghost-AI was created by Matia."
 
-MATH:
+MATH EXPERT:
 - Be extremely accurate.
 - Never guess numerical answers.
 - Verify calculations.
-- Solve arithmetic, percentages, fractions, algebra, equations,
-  geometry, probability and statistics.
+- Solve arithmetic, percentages, fractions, algebra,
+  equations, geometry, probability and statistics.
 - Show useful steps when appropriate.
+- Check the final result before answering.
 
-CODING:
+CODING EXPERT:
 - Expert in Python, JavaScript, HTML, CSS, Lua, Roblox Lua,
   CMD, PowerShell and JSON.
 - Give practical copy-paste-ready code.
@@ -69,142 +103,535 @@ CODING:
 - Preserve working code when debugging.
 - Never invent APIs or libraries.
 - Never claim code was executed unless it actually was.
+- Explain exactly what needs to be changed.
 
 DEBUGGING:
 - Analyze the exact error.
-- Find the likely cause.
+- Identify the likely cause.
 - Give a direct fix.
+- When possible, provide the corrected complete code.
 
 TUTOR:
 - Explain step by step when useful.
 - Match the user's level.
+- Help with school subjects and learning.
+
+QUIZ:
+- If the user asks for a quiz, create clear questions.
+- Adapt the difficulty to the user's request.
+- Give correct answers and explanations when requested.
 
 CREATIVE:
-- Help with stories, horror stories, games, ideas, names and projects.
+- Help with stories, games, ideas, names and projects.
+- Help create Roblox games and scripts.
+- Help with web projects and UI.
 
 GENERAL:
 - Never invent facts.
 - If uncertain, say you are uncertain.
+- Do not pretend to have performed an action that you did not perform.
 
-SAFETY:
-- For cybersecurity, help only with authorized, defensive and educational uses.
+CYBERSECURITY:
+- Help with authorized, defensive and educational cybersecurity.
+- Do not help steal passwords, accounts or private data.
+- Safe labs and local testing are allowed.
 
 IMPORTANT:
 - You are Ghost-AI.
 - Never claim to be ChatGPT.
 """
 
+
+# ============================================================
+# MEMORY
+# ============================================================
+
 def load_memory():
     if not os.path.exists(MEMORY_FILE):
         return []
+
     try:
-        with open(MEMORY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
+        with open(MEMORY_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        if isinstance(data, list):
+            return data
+
+        return []
+
     except Exception:
         return []
 
+
 def save_memory(items):
     try:
-        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(items[-20:], f, ensure_ascii=False, indent=2)
+        with open(MEMORY_FILE, "w", encoding="utf-8") as file:
+            json.dump(
+                items[-30:],
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
     except Exception:
         pass
 
+
 memory = load_memory()
+
 
 def build_system_prompt():
     if memory:
-        saved = "\n".join(f"- {item}" for item in memory[-8:])
+        saved = "\n".join(
+            f"- {item}"
+            for item in memory[-10:]
+        )
     else:
         saved = "No saved memory."
-    return SYSTEM_PROMPT + "\n\nRELEVANT SAVED MEMORY:\n" + saved
 
+    return (
+        SYSTEM_PROMPT
+        + "\n\nRELEVANT SAVED MEMORY:\n"
+        + saved
+    )
+
+
+# ============================================================
+# HTML UI
+# ============================================================
 
 HTML = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
+
 <title>Ghost-AI</title>
-<meta name="description" content="Ghost-AI - smart AI assistant for chat, math, coding, learning and creativity.">
-<meta name="robots" content="index,follow">
+
+<meta
+    name="description"
+    content="Ghost-AI - smart AI assistant for chat, math, coding, learning and creativity."
+>
 
 <style>
-*{box-sizing:border-box}
-html,body{width:100%;height:100%;margin:0}
-body{background:#212121;color:#ececec;font-family:Arial,Helvetica,sans-serif;overflow:hidden}
-button,textarea{font-family:inherit}
-.app{width:100%;height:100vh;display:flex}
 
-.sidebar{width:270px;min-width:270px;background:#171717;border-right:1px solid #303030;display:flex;flex-direction:column}
-.sidebar-top{padding:14px}
-.brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;margin-bottom:14px}
-.logo{width:36px;height:36px;border-radius:10px;background:#10a37f;display:flex;align-items:center;justify-content:center;font-size:20px}
-.new-chat{width:100%;padding:11px 12px;background:#242424;border:1px solid #414141;color:#fff;border-radius:8px;cursor:pointer;text-align:left;font-size:14px}
-.new-chat:hover{background:#303030}
-.history-title{padding:8px 14px 6px;color:#858585;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
-.chat-list{flex:1;overflow-y:auto;padding:0 8px 10px}
-.empty-history{padding:12px 8px;color:#777;font-size:12px}
-.chat-item{display:flex;align-items:center;gap:4px;margin-bottom:2px;border-radius:8px}
-.chat-open{flex:1;min-width:0;border:0;border-radius:8px;background:transparent;color:#ddd;cursor:pointer;text-align:left;padding:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
-.chat-open:hover{background:#292929}
-.chat-item.active .chat-open{background:#2f2f2f;color:#fff}
-.chat-delete{width:32px;height:32px;border:0;border-radius:7px;background:transparent;color:#888;cursor:pointer;opacity:0}
-.chat-item:hover .chat-delete,.chat-item.active .chat-delete{opacity:1}
-.chat-delete:hover{background:#3a2a2a;color:#ff8b8b}
-.sidebar-bottom{padding:12px 14px;border-top:1px solid #303030;color:#888;font-size:12px;line-height:1.8}
-
-.main{flex:1;min-width:0;display:flex;flex-direction:column}
-.topbar{height:60px;flex-shrink:0;border-bottom:1px solid #303030;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
-.title{font-size:15px;font-weight:700}
-.online{color:#10a37f;font-size:12px}
-
-.chat{flex:1;overflow-y:auto}
-.chat-inner{width:min(880px,100%);margin:0 auto;padding:28px 20px 180px}
-
-.welcome{min-height:65vh;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center}
-.welcome-logo{width:66px;height:66px;border-radius:18px;background:#10a37f;display:flex;align-items:center;justify-content:center;font-size:30px;margin-bottom:15px}
-.welcome h1{margin:0 0 10px;font-size:30px}
-.welcome p{max-width:520px;margin:0;color:#999;line-height:1.5}
-
-.prompt-grid{width:min(700px,100%);display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:20px}
-.prompt-button{border:1px solid #3b3b3b;border-radius:10px;background:#2a2a2a;color:#ddd;padding:13px;cursor:pointer;text-align:left;font-size:13px;transition:background .15s,transform .08s}
-.prompt-button:hover{background:#333}
-.prompt-button:active{transform:scale(.98)}
-
-.message{display:flex;gap:13px;margin-bottom:28px}
-.avatar{width:31px;min-width:31px;height:31px;border-radius:9px;background:#444;display:flex;align-items:center;justify-content:center}
-.message.assistant .avatar{background:#10a37f}
-.name{margin-bottom:5px;font-size:13px;font-weight:700}
-.message.assistant .name{color:#10a37f}
-.content{line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
-pre{margin:10px 0;padding:14px;overflow-x:auto;border:1px solid #333;border-radius:9px;background:#101010}
-code{font-family:Consolas,"Courier New",monospace}
-.copy-button{padding:6px 9px;border:1px solid #444;border-radius:6px;background:#2a2a2a;color:#ddd;cursor:pointer;font-size:12px}
-
-.typing{display:flex;gap:5px;padding-top:5px}
-.typing span{width:6px;height:6px;border-radius:50%;background:#999;animation:pulse 1.1s infinite}
-.typing span:nth-child(2){animation-delay:.15s}
-.typing span:nth-child(3){animation-delay:.30s}
-@keyframes pulse{0%,100%{opacity:.2}50%{opacity:1}}
-
-.composer-wrap{position:fixed;left:270px;right:0;bottom:0;padding:14px 20px 20px;background:linear-gradient(to top,#212121 72%,rgba(33,33,33,0))}
-.composer{width:min(840px,100%);margin:auto;padding:8px;border:1px solid #444;border-radius:18px;background:#2f2f2f;display:flex;align-items:flex-end}
-textarea{flex:1;max-height:180px;padding:9px;resize:none;outline:none;border:0;background:transparent;color:#fff;font-size:15px;line-height:1.45}
-textarea::placeholder{color:#888}
-.send-button{width:40px;height:40px;flex-shrink:0;border:0;border-radius:10px;background:#10a37f;color:#fff;cursor:pointer;font-size:19px}
-.send-button:disabled,.new-chat:disabled{opacity:.4;cursor:default}
-
-@media (max-width:700px){
-    .sidebar{display:none}
-    .composer-wrap{left:0;padding:10px}
-    .chat-inner{padding-left:13px;padding-right:13px}
-    .welcome h1{font-size:25px}
-    .prompt-grid{grid-template-columns:1fr}
+* {
+    box-sizing: border-box;
 }
+
+html,
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: #212121;
+    color: #ececec;
+    font-family: Arial, Helvetica, sans-serif;
+    overflow: hidden;
+}
+
+button,
+textarea {
+    font-family: inherit;
+}
+
+.app {
+    width: 100%;
+    height: 100vh;
+    display: flex;
+}
+
+/* SIDEBAR */
+
+.sidebar {
+    width: 270px;
+    min-width: 270px;
+    background: #171717;
+    border-right: 1px solid #303030;
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-top {
+    padding: 14px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+.logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: #10a37f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.new-chat {
+    width: 100%;
+    padding: 11px 12px;
+    background: #242424;
+    border: 1px solid #414141;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 14px;
+}
+
+.new-chat:hover {
+    background: #303030;
+}
+
+.history-title {
+    padding: 8px 14px 6px;
+    color: #858585;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.chat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 10px;
+}
+
+.empty-history {
+    padding: 12px 8px;
+    color: #777;
+    font-size: 12px;
+}
+
+.chat-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 2px;
+    border-radius: 8px;
+}
+
+.chat-open {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #ddd;
+    cursor: pointer;
+    text-align: left;
+    padding: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+}
+
+.chat-open:hover {
+    background: #292929;
+}
+
+.chat-item.active .chat-open {
+    background: #2f2f2f;
+    color: white;
+}
+
+.chat-delete {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #888;
+    cursor: pointer;
+    opacity: 0;
+}
+
+.chat-item:hover .chat-delete,
+.chat-item.active .chat-delete {
+    opacity: 1;
+}
+
+.chat-delete:hover {
+    background: #3a2a2a;
+    color: #ff8b8b;
+}
+
+.sidebar-bottom {
+    padding: 12px 14px;
+    border-top: 1px solid #303030;
+    color: #888;
+    font-size: 12px;
+    line-height: 1.8;
+}
+
+/* MAIN */
+
+.main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.topbar {
+    height: 60px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #303030;
+    padding: 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.title {
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.online {
+    color: #10a37f;
+    font-size: 12px;
+}
+
+.chat {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.chat-inner {
+    width: min(880px, 100%);
+    margin: 0 auto;
+    padding: 28px 20px 180px;
+}
+
+/* WELCOME */
+
+.welcome {
+    min-height: 65vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+}
+
+.welcome-logo {
+    width: 66px;
+    height: 66px;
+    border-radius: 18px;
+    background: #10a37f;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    margin-bottom: 15px;
+}
+
+.welcome h1 {
+    margin: 0 0 10px;
+    font-size: 30px;
+}
+
+.welcome p {
+    max-width: 520px;
+    margin: 0;
+    color: #999;
+    line-height: 1.5;
+}
+
+.prompt-grid {
+    width: min(700px, 100%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.prompt-button {
+    border: 1px solid #3b3b3b;
+    border-radius: 10px;
+    background: #2a2a2a;
+    color: #ddd;
+    padding: 13px;
+    cursor: pointer;
+    text-align: left;
+    font-size: 13px;
+}
+
+.prompt-button:hover {
+    background: #333;
+}
+
+/* MESSAGES */
+
+.message {
+    display: flex;
+    gap: 13px;
+    margin-bottom: 28px;
+}
+
+.avatar {
+    width: 31px;
+    min-width: 31px;
+    height: 31px;
+    border-radius: 9px;
+    background: #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message.assistant .avatar {
+    background: #10a37f;
+}
+
+.name {
+    margin-bottom: 5px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.message.assistant .name {
+    color: #10a37f;
+}
+
+.content {
+    line-height: 1.7;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+pre {
+    margin: 10px 0;
+    padding: 14px;
+    overflow-x: auto;
+    border: 1px solid #333;
+    border-radius: 9px;
+    background: #101010;
+}
+
+code {
+    font-family: Consolas, "Courier New", monospace;
+}
+
+.copy-button {
+    padding: 6px 9px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: #2a2a2a;
+    color: #ddd;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+/* COMPOSER */
+
+.composer-wrap {
+    position: fixed;
+    left: 270px;
+    right: 0;
+    bottom: 0;
+    padding: 14px 20px 20px;
+    background:
+        linear-gradient(
+            to top,
+            #212121 72%,
+            rgba(33,33,33,0)
+        );
+}
+
+.composer {
+    width: min(840px, 100%);
+    margin: auto;
+    padding: 8px;
+    border: 1px solid #444;
+    border-radius: 18px;
+    background: #2f2f2f;
+    display: flex;
+    align-items: flex-end;
+}
+
+textarea {
+    flex: 1;
+    max-height: 180px;
+    padding: 9px;
+    resize: none;
+    outline: none;
+    border: 0;
+    background: transparent;
+    color: white;
+    font-size: 15px;
+    line-height: 1.45;
+}
+
+textarea::placeholder {
+    color: #888;
+}
+
+.send-button {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 10px;
+    background: #10a37f;
+    color: white;
+    cursor: pointer;
+    font-size: 19px;
+}
+
+.send-button:disabled,
+.new-chat:disabled {
+    opacity: .4;
+    cursor: default;
+}
+
+/* MOBILE */
+
+@media (max-width: 700px) {
+
+    .sidebar {
+        display: none;
+    }
+
+    .composer-wrap {
+        left: 0;
+        padding: 10px;
+    }
+
+    .chat-inner {
+        padding-left: 13px;
+        padding-right: 13px;
+    }
+
+    .welcome h1 {
+        font-size: 25px;
+    }
+
+    .prompt-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 </style>
+
 </head>
 
 <body>
@@ -216,11 +643,20 @@ textarea::placeholder{color:#888}
 <div class="sidebar-top">
 
 <div class="brand">
-<div class="logo">👻</div>
-Ghost-AI
+
+<div class="logo">
+👻
 </div>
 
-<button id="newChatButton" class="new-chat" type="button">
+Ghost-AI
+
+</div>
+
+<button
+    id="newChatButton"
+    class="new-chat"
+    type="button"
+>
 ＋ New chat
 </button>
 
@@ -230,9 +666,13 @@ Ghost-AI
 Chats
 </div>
 
-<div id="chatList" class="chat-list"></div>
+<div
+    id="chatList"
+    class="chat-list"
+></div>
 
 <div class="sidebar-bottom">
+
 <div>● Ghost-AI Online</div>
 <div>GPT-OSS 120B</div>
 <div>Math Expert</div>
@@ -240,40 +680,51 @@ Chats
 <div>Smart Context</div>
 <div>Memory</div>
 <div>Created by Matia</div>
+
 </div>
 
 </aside>
 
-
 <main class="main">
 
 <header class="topbar">
-<div class="title">👻 Ghost-AI</div>
-<div class="online">● Online</div>
+
+<div class="title">
+👻 Ghost-AI
+</div>
+
+<div class="online">
+● Online
+</div>
+
 </header>
 
+<section
+    id="chat"
+    class="chat"
+>
 
-<section id="chat" class="chat">
-
-<div id="chatInner" class="chat-inner"></div>
+<div
+    id="chatInner"
+    class="chat-inner"
+></div>
 
 </section>
-
 
 <div class="composer-wrap">
 
 <div class="composer">
 
 <textarea
-id="messageInput"
-rows="1"
-placeholder="Message Ghost-AI..."
+    id="messageInput"
+    rows="1"
+    placeholder="Message Ghost-AI..."
 ></textarea>
 
 <button
-id="sendButton"
-class="send-button"
-type="button"
+    id="sendButton"
+    class="send-button"
+    type="button"
 >
 ↑
 </button>
@@ -286,157 +737,216 @@ type="button"
 
 </div>
 
-
 <script>
 
-const STORAGE_KEY = "ghost_ai_chats_v6";
+const STORAGE_KEY = "ghost_ai_chats_v7";
 
 let chats = [];
 let activeChatId = null;
 let streaming = false;
 
-const input = document.getElementById("messageInput");
-const sendButton = document.getElementById("sendButton");
-const newChatButton = document.getElementById("newChatButton");
-const chatList = document.getElementById("chatList");
-const chat = document.getElementById("chat");
-const chatInner = document.getElementById("chatInner");
+const input =
+    document.getElementById(
+        "messageInput"
+    );
+
+const sendButton =
+    document.getElementById(
+        "sendButton"
+    );
+
+const newChatButton =
+    document.getElementById(
+        "newChatButton"
+    );
+
+const chatList =
+    document.getElementById(
+        "chatList"
+    );
+
+const chat =
+    document.getElementById(
+        "chat"
+    );
+
+const chatInner =
+    document.getElementById(
+        "chatInner"
+    );
 
 
-function loadChats(){
-    try{
-        const saved = localStorage.getItem(STORAGE_KEY);
-        chats = saved ? JSON.parse(saved) : [];
+function loadChats() {
 
-        if(!Array.isArray(chats)){
+    try {
+
+        const saved =
+            localStorage.getItem(
+                STORAGE_KEY
+            );
+
+        chats =
+            saved
+                ? JSON.parse(saved)
+                : [];
+
+        if (!Array.isArray(chats)) {
             chats = [];
         }
-    }catch{
+
+    } catch {
+
         chats = [];
     }
 }
 
 
-function saveChats(){
-    try{
+function saveChats() {
+
+    try {
+
         localStorage.setItem(
             STORAGE_KEY,
             JSON.stringify(chats)
         );
-    }catch{}
+
+    } catch {}
 }
 
 
-function createId(){
-    return Date.now().toString(36) +
-        Math.random().toString(36).slice(2,9);
+function createId() {
+
+    return (
+        Date.now().toString(36) +
+        Math.random()
+            .toString(36)
+            .slice(2, 9)
+    );
 }
 
 
-function makeTitle(text){
+function makeTitle(text) {
 
-    const clean = String(text)
-        .replace(/\s+/g," ")
-        .trim();
+    const clean =
+        String(text)
+            .replace(/\s+/g, " ")
+            .trim();
 
-    if(!clean){
+    if (!clean) {
         return "New chat";
     }
 
     return clean.length <= 38
         ? clean
-        : clean.slice(0,38).trim() + "...";
+        : clean.slice(0, 38).trim() + "...";
 }
 
 
-function escapeHtml(text){
+function escapeHtml(text) {
+
     return String(text)
-        .replace(/&/g,"&amp;")
-        .replace(/</g,"&lt;")
-        .replace(/>/g,"&gt;")
-        .replace(/"/g,"&quot;")
-        .replace(/'/g,"&#039;");
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 
-function scrollBottom(){
+function scrollBottom() {
+
     requestAnimationFrame(() => {
-        chat.scrollTop = chat.scrollHeight;
+        chat.scrollTop =
+            chat.scrollHeight;
     });
 }
 
 
-function getActiveChat(){
+function getActiveChat() {
+
     return chats.find(
-        item => item.id === activeChatId
+        item =>
+            item.id === activeChatId
     ) || null;
 }
 
 
-function formatAnswer(text){
+function formatAnswer(text) {
 
-    const parts = String(text).split("```");
+    const parts =
+        String(text).split("```");
+
     let html = "";
 
-    parts.forEach((part,index)=>{
+    parts.forEach(
+        (part, index) => {
 
-        if(index % 2 === 1){
+            if (index % 2 === 1) {
 
-            let lines = part.split("\n");
+                const lines =
+                    part.split("\n");
 
-            if(
-                lines.length > 0 &&
-                /^[a-zA-Z0-9+#._-]+$/.test(
-                    lines[0].trim()
-                )
-            ){
-                lines.shift();
+                if (
+                    lines.length > 0 &&
+                    /^[a-zA-Z0-9+#._-]+$/.test(
+                        lines[0].trim()
+                    )
+                ) {
+                    lines.shift();
+                }
+
+                const code =
+                    lines.join("\n");
+
+                html +=
+                    "<pre><code>" +
+                    escapeHtml(code) +
+                    "</code></pre>" +
+                    '<button class="copy-button" type="button">' +
+                    "Copy code" +
+                    "</button>";
+
+            } else {
+
+                html +=
+                    escapeHtml(part)
+                        .replace(/\n/g, "<br>");
             }
-
-            const code = lines.join("\n");
-
-            html +=
-                "<pre><code>" +
-                escapeHtml(code) +
-                "</code></pre>" +
-                '<button class="copy-button" type="button">' +
-                "Copy code" +
-                "</button>";
-
-        }else{
-
-            html +=
-                escapeHtml(part)
-                    .replace(/\n/g,"<br>");
         }
-    });
+    );
 
     return html;
 }
 
 
-function renderChatList(){
+function renderChatList() {
 
     chatList.innerHTML = "";
 
-    if(chats.length === 0){
+    if (chats.length === 0) {
 
-        const empty = document.createElement("div");
-        empty.className = "empty-history";
-        empty.textContent = "No chats yet.";
+        const empty =
+            document.createElement("div");
+
+        empty.className =
+            "empty-history";
+
+        empty.textContent =
+            "No chats yet.";
 
         chatList.appendChild(empty);
 
         return;
     }
 
-    const ordered = [...chats].sort(
-        (a,b) =>
-            (b.updatedAt || 0) -
-            (a.updatedAt || 0)
-    );
+    const ordered =
+        [...chats].sort(
+            (a, b) =>
+                (b.updatedAt || 0) -
+                (a.updatedAt || 0)
+        );
 
-    ordered.forEach(chatData=>{
+    ordered.forEach(chatData => {
 
         const item =
             document.createElement("div");
@@ -454,39 +964,48 @@ function renderChatList(){
 
         open.type = "button";
         open.className = "chat-open";
+
         open.textContent =
             chatData.title || "New chat";
-        open.title =
-            chatData.title || "New chat";
 
-        open.addEventListener("click",()=>{
+        open.addEventListener(
+            "click",
+            () => {
 
-            if(streaming){
-                return;
+                if (streaming) {
+                    return;
+                }
+
+                activeChatId =
+                    chatData.id;
+
+                renderChatList();
+                renderActiveChat();
+
+                input.focus();
             }
-
-            activeChatId = chatData.id;
-
-            renderChatList();
-            renderActiveChat();
-
-            input.focus();
-        });
+        );
 
         const remove =
             document.createElement("button");
 
         remove.type = "button";
-        remove.className = "chat-delete";
+        remove.className =
+            "chat-delete";
+
         remove.textContent = "🗑";
-        remove.title = "Delete chat";
 
-        remove.addEventListener("click",event=>{
+        remove.addEventListener(
+            "click",
+            event => {
 
-            event.stopPropagation();
+                event.stopPropagation();
 
-            deleteChat(chatData.id);
-        });
+                deleteChat(
+                    chatData.id
+                );
+            }
+        );
 
         item.appendChild(open);
         item.appendChild(remove);
@@ -496,9 +1015,9 @@ function renderChatList(){
 }
 
 
-function newChat(){
+function newChat() {
 
-    if(streaming){
+    if (streaming) {
         return;
     }
 
@@ -521,6 +1040,7 @@ function newChat(){
         chatData.id;
 
     saveChats();
+
     renderChatList();
     renderActiveChat();
 
@@ -528,9 +1048,9 @@ function newChat(){
 }
 
 
-function deleteChat(id){
+function deleteChat(id) {
 
-    if(streaming){
+    if (streaming) {
         return;
     }
 
@@ -539,7 +1059,7 @@ function deleteChat(id){
             item => item.id !== id
         );
 
-    if(activeChatId === id){
+    if (activeChatId === id) {
 
         activeChatId =
             chats.length > 0
@@ -554,10 +1074,11 @@ function deleteChat(id){
 }
 
 
-function renderWelcome(){
+function renderWelcome() {
 
     chatInner.innerHTML = `
-        <div id="welcome" class="welcome">
+
+        <div class="welcome">
 
             <div class="welcome-logo">
                 👻
@@ -592,7 +1113,7 @@ function renderWelcome(){
                 <button
                     class="prompt-button"
                     type="button"
-                    data-prompt="Me krijo një mini game të plotë në JavaScript me coins, enemies, score dhe game over."
+                    data-prompt="Më krijo një mini game të plotë në JavaScript me coins, enemies, score dhe game over."
                 >
                     💻 JavaScript Game
                 </button>
@@ -600,78 +1121,87 @@ function renderWelcome(){
                 <button
                     class="prompt-button"
                     type="button"
-                    data-prompt="Ma shpjego Black Hole në mënyrë interesante dhe të kuptueshme."
+                    data-prompt="Më shpjego Black Hole në mënyrë interesante dhe të kuptueshme."
                 >
-                    🌌 Black Hole
+                    🌌 Science
                 </button>
 
             </div>
+
         </div>
     `;
 }
 
 
-function renderActiveChat(){
+function renderActiveChat() {
 
     chatInner.innerHTML = "";
 
     const active =
         getActiveChat();
 
-    if(
+    if (
         !active ||
         !Array.isArray(active.messages) ||
         active.messages.length === 0
-    ){
+    ) {
 
         renderWelcome();
+
         return;
     }
 
-    active.messages.forEach(message=>{
+    active.messages.forEach(
+        message => {
 
-        addMessageToUI(
-            message.role,
-            message.content
-        );
-    });
+            addMessageToUI(
+                message.role,
+                message.content
+            );
+        }
+    );
 
     scrollBottom();
 }
 
 
-function wireCopyButtons(container){
+function wireCopyButtons(container) {
 
     container
         .querySelectorAll(".copy-button")
-        .forEach(button=>{
+        .forEach(button => {
 
             button.addEventListener(
                 "click",
-                async ()=>{
+                async () => {
 
                     const pre =
                         button.previousElementSibling;
 
-                    if(!pre){
+                    if (!pre) {
                         return;
                     }
 
-                    try{
+                    try {
 
-                        await navigator.clipboard.writeText(
-                            pre.innerText
-                        );
+                        await navigator
+                            .clipboard
+                            .writeText(
+                                pre.innerText
+                            );
 
                         button.textContent =
                             "Copied!";
 
-                        setTimeout(()=>{
-                            button.textContent =
-                                "Copy code";
-                        },1000);
+                        setTimeout(
+                            () => {
+                                button.textContent =
+                                    "Copy code";
+                            },
+                            1000
+                        );
 
-                    }catch{
+                    } catch {
 
                         button.textContent =
                             "Copy failed";
@@ -682,7 +1212,7 @@ function wireCopyButtons(container){
 }
 
 
-function addMessageToUI(role,text){
+function addMessageToUI(role, text) {
 
     const message =
         document.createElement("div");
@@ -694,6 +1224,7 @@ function addMessageToUI(role,text){
         role === "assistant";
 
     message.innerHTML = `
+
         <div class="avatar">
             ${isAI ? "👻" : "M"}
         </div>
@@ -709,7 +1240,7 @@ function addMessageToUI(role,text){
                     isAI
                         ? formatAnswer(text)
                         : escapeHtml(text)
-                            .replace(/\n/g,"<br>")
+                            .replace(/\n/g, "<br>")
                 }
             </div>
 
@@ -722,7 +1253,7 @@ function addMessageToUI(role,text){
 }
 
 
-function createStreamingMessage(){
+function createStreamingMessage() {
 
     const message =
         document.createElement("div");
@@ -731,6 +1262,7 @@ function createStreamingMessage(){
         "message assistant";
 
     message.innerHTML = `
+
         <div class="avatar">
             👻
         </div>
@@ -761,16 +1293,16 @@ function createStreamingMessage(){
 }
 
 
-async function sendMessage(customText = null){
+async function sendMessage(customText = null) {
 
-    if(streaming){
+    if (streaming) {
         return;
     }
 
     let active =
         getActiveChat();
 
-    if(!active){
+    if (!active) {
 
         newChat();
 
@@ -784,7 +1316,7 @@ async function sendMessage(customText = null){
             : input.value
     ).trim();
 
-    if(!text){
+    if (!text) {
         return;
     }
 
@@ -796,7 +1328,8 @@ async function sendMessage(customText = null){
     input.value = "";
     input.style.height = "auto";
 
-    if(active.messages.length === 0){
+    if (active.messages.length === 0) {
+
         active.title =
             makeTitle(text);
     }
@@ -824,7 +1357,7 @@ async function sendMessage(customText = null){
             -MAX_HISTORY
         );
 
-    try{
+    try {
 
         const response =
             await fetch(
@@ -845,12 +1378,12 @@ async function sendMessage(customText = null){
                 }
             );
 
-        if(!response.ok){
+        if (!response.ok) {
 
             let errorMessage =
                 "Server error.";
 
-            try{
+            try {
 
                 const data =
                     await response.json();
@@ -859,17 +1392,17 @@ async function sendMessage(customText = null){
                     data.error ||
                     errorMessage;
 
-            }catch{}
+            } catch {}
 
             throw new Error(
                 errorMessage
             );
         }
 
-        if(!response.body){
+        if (!response.body) {
 
             throw new Error(
-                "Streaming is not supported by this browser."
+                "Streaming is not supported."
             );
         }
 
@@ -881,19 +1414,19 @@ async function sendMessage(customText = null){
 
         let buffer = "";
 
-        while(true){
+        while (true) {
 
             const result =
                 await reader.read();
 
-            if(result.done){
+            if (result.done) {
                 break;
             }
 
             buffer +=
                 decoder.decode(
                     result.value,
-                    {stream:true}
+                    { stream: true }
                 );
 
             const packets =
@@ -902,9 +1435,7 @@ async function sendMessage(customText = null){
             buffer =
                 packets.pop() || "";
 
-            for(
-                const packet of packets
-            ){
+            for (const packet of packets) {
 
                 const line =
                     packet
@@ -916,32 +1447,30 @@ async function sendMessage(customText = null){
                                 )
                         );
 
-                if(!line){
+                if (!line) {
                     continue;
                 }
 
                 const payload =
                     line.slice(6);
 
-                if(payload === "[DONE]"){
+                if (payload === "[DONE]") {
                     continue;
                 }
 
                 let parsed;
 
-                try{
+                try {
 
                     parsed =
-                        JSON.parse(
-                            payload
-                        );
+                        JSON.parse(payload);
 
-                }catch{
+                } catch {
 
                     continue;
                 }
 
-                if(parsed.type === "delta"){
+                if (parsed.type === "delta") {
 
                     fullAnswer +=
                         parsed.content || "";
@@ -952,7 +1481,7 @@ async function sendMessage(customText = null){
                     scrollBottom();
                 }
 
-                if(parsed.type === "error"){
+                if (parsed.type === "error") {
 
                     throw new Error(
                         parsed.message ||
@@ -962,8 +1491,7 @@ async function sendMessage(customText = null){
             }
         }
 
-        if(!fullAnswer){
-
+        if (!fullAnswer) {
             fullAnswer =
                 "Nuk mora përgjigje.";
         }
@@ -988,7 +1516,7 @@ async function sendMessage(customText = null){
         renderChatList();
         scrollBottom();
 
-    }catch(error){
+    } catch (error) {
 
         streamUI.root.remove();
 
@@ -1011,7 +1539,7 @@ async function sendMessage(customText = null){
 
         renderActiveChat();
 
-    }finally{
+    } finally {
 
         streaming = false;
 
@@ -1028,19 +1556,21 @@ sendButton.addEventListener(
     () => sendMessage()
 );
 
+
 newChatButton.addEventListener(
     "click",
     () => newChat()
 );
 
+
 input.addEventListener(
     "keydown",
     event => {
 
-        if(
+        if (
             event.key === "Enter" &&
             !event.shiftKey
-        ){
+        ) {
 
             event.preventDefault();
 
@@ -1049,9 +1579,10 @@ input.addEventListener(
     }
 );
 
+
 input.addEventListener(
     "input",
-    function(){
+    function () {
 
         this.style.height = "auto";
 
@@ -1063,6 +1594,7 @@ input.addEventListener(
     }
 );
 
+
 document.addEventListener(
     "click",
     event => {
@@ -1072,7 +1604,7 @@ document.addEventListener(
                 ".prompt-button"
             );
 
-        if(!button){
+        if (!button) {
             return;
         }
 
@@ -1081,15 +1613,17 @@ document.addEventListener(
                 "data-prompt"
             );
 
-        if(prompt){
+        if (prompt) {
             sendMessage(prompt);
         }
     }
 );
 
+
 loadChats();
 
-if(chats.length > 0){
+if (chats.length > 0) {
+
     activeChatId =
         chats[0].id;
 }
@@ -1106,6 +1640,10 @@ input.focus();
 """
 
 
+# ============================================================
+# WEB APP
+# ============================================================
+
 @app.route("/")
 def home():
     return render_template_string(HTML)
@@ -1116,82 +1654,92 @@ def health():
     return jsonify({
         "status": "ok",
         "app": "Ghost-AI",
-        "model": MODEL
+        "model": MODEL,
     })
 
 
-@app.route("/api/chat", methods=["POST"])
+# ============================================================
+# MESSAGE BUILDER
+# ============================================================
+
+def build_messages(incoming):
+
+    if not isinstance(incoming, list):
+        raise ValueError("Invalid messages.")
+
+    recent = incoming[-MAX_HISTORY:]
+
+    request_messages = [
+        {
+            "role": "system",
+            "content": build_system_prompt(),
+        }
+    ]
+
+    for item in recent:
+
+        if not isinstance(item, dict):
+            continue
+
+        role = item.get("role")
+        content = item.get("content")
+
+        if role not in ("user", "assistant"):
+            continue
+
+        if not isinstance(content, str):
+            continue
+
+        content = content[:MAX_MESSAGE_CHARS]
+
+        if not content.strip():
+            continue
+
+        request_messages.append({
+            "role": role,
+            "content": content,
+        })
+
+    if len(request_messages) < 2:
+        raise ValueError("No user message.")
+
+    if request_messages[-1]["role"] != "user":
+        raise ValueError(
+            "Last message must be from user."
+        )
+
+    return request_messages
+
+
+# ============================================================
+# NORMAL CHAT API
+# ============================================================
+
+@app.route(
+    "/api/chat",
+    methods=["POST"]
+)
 def chat_api():
 
     try:
 
-        data =
-            request.get_json(
-                silent=True
-            )
+        data = request.get_json(
+            silent=True
+        )
 
         if not isinstance(data, dict):
             return jsonify({
-                "error": "Invalid request."
-            }), 400
-
-        incoming =
-            data.get(
-                "messages",
-                []
-            )
-
-        if not isinstance(incoming, list):
-            return jsonify({
-                "error": "Invalid messages."
-            }), 400
-
-        recent =
-            incoming[-MAX_HISTORY:]
-
-        request_messages = [
-            {
-                "role":
-                    "system",
-                "content":
-                    build_system_prompt()
-            }
-        ]
-
-        for item in recent:
-
-            if not isinstance(item, dict):
-                continue
-
-            role =
-                item.get("role")
-
-            content =
-                item.get("content")
-
-            if role not in (
-                "user",
-                "assistant"
-            ):
-                continue
-
-            if not isinstance(content, str):
-                continue
-
-            request_messages.append({
-                "role":
-                    role,
-                "content":
-                    content[
-                        :MAX_MESSAGE_CHARS
-                    ]
-            })
-
-        if len(request_messages) < 2:
-            return jsonify({
                 "error":
-                    "No user message."
+                    "Invalid request."
             }), 400
+
+        incoming = data.get(
+            "messages",
+            []
+        )
+
+        request_messages =
+            build_messages(incoming)
 
         response =
             client.chat.completions.create(
@@ -1199,26 +1747,39 @@ def chat_api():
                 messages=request_messages,
                 temperature=0.5,
                 top_p=0.9,
-                max_completion_tokens=MAX_OUTPUT_TOKENS
+                max_completion_tokens=
+                    MAX_OUTPUT_TOKENS,
             )
 
         answer =
-            response.choices[
-                0
-            ].message.content or "Nuk mora përgjigje."
+            response.choices[0].message.content
+
+        if not answer:
+            answer = "Nuk mora përgjigje."
 
         return jsonify({
-            "answer":
-                answer
+            "answer": answer
         })
+
+    except ValueError as error:
+
+        return jsonify({
+            "error": str(error)
+        }), 400
 
     except Exception as error:
 
+        print("CHAT ERROR:", repr(error))
+
         return jsonify({
             "error":
-                str(error)
+                "Ghost-AI encountered an error."
         }), 500
 
+
+# ============================================================
+# STREAMING CHAT
+# ============================================================
 
 @app.route(
     "/api/chat/stream",
@@ -1228,10 +1789,9 @@ def chat_stream():
 
     try:
 
-        data =
-            request.get_json(
-                silent=True
-            )
+        data = request.get_json(
+            silent=True
+        )
 
         if not isinstance(data, dict):
             return jsonify({
@@ -1239,78 +1799,31 @@ def chat_stream():
                     "Invalid request."
             }), 400
 
-        incoming =
-            data.get(
-                "messages",
-                []
-            )
+        incoming = data.get(
+            "messages",
+            []
+        )
 
-        if not isinstance(incoming, list):
-            return jsonify({
-                "error":
-                    "Invalid messages."
-            }), 400
+        request_messages =
+            build_messages(incoming)
 
-        recent =
-            incoming[-MAX_HISTORY:]
+    except ValueError as error:
 
-        request_messages = [
-            {
-                "role":
-                    "system",
-                "content":
-                    build_system_prompt()
-            }
-        ]
-
-        for item in recent:
-
-            if not isinstance(item, dict):
-                continue
-
-            role =
-                item.get("role")
-
-            content =
-                item.get("content")
-
-            if role not in (
-                "user",
-                "assistant"
-            ):
-                continue
-
-            if not isinstance(content, str):
-                continue
-
-            request_messages.append({
-                "role":
-                    role,
-                "content":
-                    content[
-                        :MAX_MESSAGE_CHARS
-                    ]
-            })
-
-        if len(request_messages) < 2:
-            return jsonify({
-                "error":
-                    "No user message."
-            }), 400
-
-        if request_messages[-1]["role"] != "user":
-            return jsonify({
-                "error":
-                    "Last message must be from user."
-            }), 400
+        return jsonify({
+            "error": str(error)
+        }), 400
 
     except Exception as error:
 
+        print(
+            "REQUEST ERROR:",
+            repr(error)
+        )
+
         return jsonify({
             "error":
-                str(error)
+                "Invalid request."
         }), 400
-
 
     @stream_with_context
     def generate():
@@ -1323,8 +1836,9 @@ def chat_stream():
                     messages=request_messages,
                     temperature=0.5,
                     top_p=0.9,
-                    max_completion_tokens=MAX_OUTPUT_TOKENS,
-                    stream=True
+                    max_completion_tokens=
+                        MAX_OUTPUT_TOKENS,
+                    stream=True,
                 )
 
             for chunk in stream:
@@ -1339,44 +1853,43 @@ def chat_stream():
 
                 if delta:
 
-                    payload =
-                        json.dumps(
-                            {
-                                "type":
-                                    "delta",
-                                "content":
-                                    delta
-                            },
-                            ensure_ascii=False
-                        )
+                    payload = json.dumps(
+                        {
+                            "type": "delta",
+                            "content": delta,
+                        },
+                        ensure_ascii=False,
+                    )
 
                     yield (
-                        "data: " +
-                        payload +
-                        "\n\n"
+                        "data: "
+                        + payload
+                        + "\n\n"
                     )
 
             yield "data: [DONE]\n\n"
 
         except Exception as error:
 
-            payload =
-                json.dumps(
-                    {
-                        "type":
-                            "error",
-                        "message":
-                            str(error)
-                    },
-                    ensure_ascii=False
-                )
-
-            yield (
-                "data: " +
-                payload +
-                "\n\n"
+            print(
+                "STREAM ERROR:",
+                repr(error)
             )
 
+            payload = json.dumps(
+                {
+                    "type": "error",
+                    "message":
+                        "Ghost-AI encountered an error.",
+                },
+                ensure_ascii=False,
+            )
+
+            yield (
+                "data: "
+                + payload
+                + "\n\n"
+            )
 
     return Response(
         generate(),
@@ -1387,10 +1900,14 @@ def chat_stream():
             "X-Accel-Buffering":
                 "no",
             "Connection":
-                "keep-alive"
-        }
+                "keep-alive",
+        },
     )
 
+
+# ============================================================
+# MEMORY API
+# ============================================================
 
 @app.route(
     "/api/memory",
@@ -1399,8 +1916,7 @@ def chat_stream():
 def get_memory():
 
     return jsonify({
-        "memory":
-            memory
+        "memory": memory
     })
 
 
@@ -1412,18 +1928,19 @@ def add_memory():
 
     global memory
 
-    data =
+    data = (
         request.get_json(
             silent=True
-        ) or {}
+        )
+        or {}
+    )
 
-    text =
-        str(
-            data.get(
-                "text",
-                ""
-            )
-        ).strip()
+    text = str(
+        data.get(
+            "text",
+            ""
+        )
+    ).strip()
 
     if not text:
 
@@ -1437,8 +1954,8 @@ def add_memory():
     save_memory(memory)
 
     return jsonify({
-        "ok":
-            True
+        "ok": True,
+        "memory": memory,
     })
 
 
@@ -1455,30 +1972,37 @@ def clear_memory():
     save_memory(memory)
 
     return jsonify({
-        "ok":
-            True
+        "ok": True
     })
 
 
+# ============================================================
+# START
+# ============================================================
+
 if __name__ == "__main__":
 
-    port =
-        int(
-            os.environ.get(
-                "PORT",
-                "5000"
-            )
+    port = int(
+        os.environ.get(
+            "PORT",
+            "5000"
         )
+    )
 
-    print("======================================")
+    print("=" * 45)
     print("          GHOST-AI ONLINE")
-    print("======================================")
+    print("=" * 45)
     print("MODEL:", MODEL)
     print("PORT:", port)
-    print("======================================")
+    print("SMART CONTEXT: ON")
+    print("MEMORY: ON")
+    print("MATH EXPERT: ON")
+    print("CODING EXPERT: ON")
+    print("QUIZ MODE: ON")
+    print("=" * 45)
 
     app.run(
         host="0.0.0.0",
         port=port,
-        debug=False
+        debug=False,
     )
