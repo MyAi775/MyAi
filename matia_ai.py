@@ -2,7 +2,9 @@ from flask import Flask, request
 
 app = Flask(__name__)
 
-VERIFY_TOKEN = "matia_ai_2026"
+import os
+
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "matia_ai_2026")
 
 
 @app.route("/", methods=["GET"])
