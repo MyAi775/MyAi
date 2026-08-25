@@ -5,12 +5,11 @@ from flask import Flask, request, jsonify, render_template_string
 from groq import Groq
 
 
+# ============================================================
+# GHOST-AI
+# ============================================================
+
 app = Flask(__name__)
-
-
-# ============================================================
-# CONFIG
-# ============================================================
 
 API_KEY = os.environ.get("GROQ_API_KEY")
 
@@ -32,7 +31,7 @@ MEMORY_FILE = "ghost_memory.json"
 # ============================================================
 
 SYSTEM_PROMPT = """
-You are Ghost-AI, a smart, natural, friendly AI assistant created by Matia.
+You are Ghost-AI, a smart, natural and friendly AI assistant created by Matia.
 
 PERSONALITY:
 - Speak naturally and casually.
@@ -69,7 +68,7 @@ SMART CONTEXT:
 
 CREATOR:
 - Ghost-AI was created by Matia.
-- If asked who created you:
+- If asked who created you, answer:
   "Ghost-AI was created by Matia."
 
 MATH EXPERT:
@@ -473,6 +472,7 @@ textarea {
     padding: 13px;
     cursor: pointer;
     text-align: left;
+    font-size: 13px;
 }
 
 .prompt-button:hover {
@@ -576,7 +576,6 @@ code {
 }
 
 @keyframes pulse {
-
     0%, 100% {
         opacity: .2;
     }
@@ -681,6 +680,7 @@ textarea::placeholder {
 }
 
 </style>
+
 </head>
 
 <body>
@@ -785,7 +785,7 @@ textarea::placeholder {
 
 <script>
 
-const STORAGE_KEY = "ghost_ai_chats_v3";
+const STORAGE_KEY = "ghost_ai_chats_v4";
 
 const input =
     document.getElementById("messageInput");
@@ -805,9 +805,7 @@ const chat =
 const chatInner =
     document.getElementById("chatInner");
 
-
 let chats = [];
-
 let activeChatId = null;
 
 
@@ -816,41 +814,31 @@ let activeChatId = null;
    ============================================================ */
 
 function loadChats() {
-
     try {
-
         const saved =
             localStorage.getItem(STORAGE_KEY);
 
-        chats =
-            saved
-                ? JSON.parse(saved)
-                : [];
+        chats = saved
+            ? JSON.parse(saved)
+            : [];
 
         if (!Array.isArray(chats)) {
             chats = [];
         }
 
     } catch {
-
         chats = [];
     }
 }
 
 
 function saveChats() {
-
     try {
-
         localStorage.setItem(
             STORAGE_KEY,
             JSON.stringify(chats)
         );
-
     } catch {
-
-        // Ignore localStorage errors.
-
     }
 }
 
@@ -860,37 +848,29 @@ function saveChats() {
    ============================================================ */
 
 function createId() {
-
     return (
         Date.now().toString(36) +
-        Math.random()
-            .toString(36)
-            .slice(2, 9)
+        Math.random().toString(36).slice(2, 9)
     );
 }
 
 
 function makeTitle(text) {
 
-    const cleaned =
+    const clean =
         String(text)
             .replace(/\s+/g, " ")
             .trim();
 
-    if (!cleaned) {
+    if (!clean) {
         return "New chat";
     }
 
-    if (cleaned.length <= 34) {
-        return cleaned;
+    if (clean.length <= 34) {
+        return clean;
     }
 
-    return (
-        cleaned
-            .slice(0, 34)
-            .trim() +
-        "..."
-    );
+    return clean.slice(0, 34).trim() + "...";
 }
 
 
@@ -912,52 +892,40 @@ function formatAnswer(text) {
 
     let html = "";
 
+    parts.forEach(function(part, index) {
 
-    parts.forEach(
-        function(part, index) {
+        if (index % 2 === 1) {
 
-            if (index % 2 === 1) {
+            let lines =
+                part.split("\n");
 
-                let lines =
-                    part.split("\n");
-
-
-                if (
-                    lines.length > 0 &&
-                    /^[a-zA-Z0-9+#._-]+$/.test(
-                        lines[0].trim()
-                    )
-                ) {
-                    lines.shift();
-                }
-
-
-                const code =
-                    lines.join("\n");
-
-
-                html +=
-                    "<pre><code>" +
-                    escapeHtml(code) +
-                    "</code></pre>" +
-
-                    '<button ' +
-                    'class="copy-button" ' +
-                    'type="button">' +
-                    "Copy code" +
-                    "</button>";
-
-            } else {
-
-                html +=
-                    escapeHtml(part)
-                        .replace(/\n/g, "<br>");
-
+            if (
+                lines.length > 0 &&
+                /^[a-zA-Z0-9+#._-]+$/.test(
+                    lines[0].trim()
+                )
+            ) {
+                lines.shift();
             }
 
-        }
-    );
+            const code =
+                lines.join("\n");
 
+            html +=
+                "<pre><code>" +
+                escapeHtml(code) +
+                "</code></pre>" +
+                '<button class="copy-button" type="button">' +
+                "Copy code" +
+                "</button>";
+
+        } else {
+
+            html +=
+                escapeHtml(part)
+                    .replace(/\n/g, "<br>");
+        }
+    });
 
     return html;
 }
@@ -965,13 +933,17 @@ function formatAnswer(text) {
 
 function getActiveChat() {
 
-    return (
-        chats.find(
-            item =>
-                item.id === activeChatId
-        ) ||
-        null
-    );
+    return chats.find(
+        item => item.id === activeChatId
+    ) || null;
+}
+
+
+function scrollBottom() {
+
+    requestAnimationFrame(function() {
+        chat.scrollTop = chat.scrollHeight;
+    });
 }
 
 
@@ -982,7 +954,6 @@ function getActiveChat() {
 function renderChatList() {
 
     chatList.innerHTML = "";
-
 
     if (chats.length === 0) {
 
@@ -995,114 +966,79 @@ function renderChatList() {
         empty.textContent =
             "No chats yet.";
 
-        chatList.appendChild(
-            empty
-        );
+        chatList.appendChild(empty);
 
         return;
     }
 
-
-    chats
-        .sort(
-            (a, b) =>
+    const ordered =
+        [...chats].sort(function(a, b) {
+            return (
                 (b.updatedAt || 0) -
                 (a.updatedAt || 0)
-        )
-        .forEach(
-            function(chatData) {
+            );
+        });
 
-                const item =
-                    document.createElement(
-                        "div"
-                    );
+    ordered.forEach(function(chatData) {
 
-                item.className =
-                    "chat-item" +
-                    (
-                        chatData.id === activeChatId
-                            ? " active"
-                            : ""
-                    );
+        const item =
+            document.createElement("div");
 
+        item.className =
+            "chat-item" +
+            (
+                chatData.id === activeChatId
+                    ? " active"
+                    : ""
+            );
 
-                const open =
-                    document.createElement(
-                        "button"
-                    );
+        const open =
+            document.createElement("button");
 
-                open.type =
-                    "button";
+        open.type = "button";
+        open.className = "chat-open";
+        open.title = chatData.title;
+        open.textContent = chatData.title;
 
-                open.className =
-                    "chat-open";
+        open.addEventListener(
+            "click",
+            function() {
 
-                open.title =
-                    chatData.title;
+                activeChatId =
+                    chatData.id;
 
-                open.textContent =
-                    chatData.title;
+                renderChatList();
+                renderActiveChat();
 
-
-                open.addEventListener(
-                    "click",
-                    function() {
-
-                        activeChatId =
-                            chatData.id;
-
-                        saveChats();
-
-                        renderChatList();
-
-                        renderActiveChat();
-
-                        input.focus();
-
-                    }
-                );
-
-
-                const remove =
-                    document.createElement(
-                        "button"
-                    );
-
-                remove.type =
-                    "button";
-
-                remove.className =
-                    "chat-delete";
-
-                remove.title =
-                    "Delete chat";
-
-                remove.textContent =
-                    "🗑";
-
-
-                remove.addEventListener(
-                    "click",
-                    function(event) {
-
-                        event.stopPropagation();
-
-                        deleteChat(
-                            chatData.id
-                        );
-
-                    }
-                );
-
-
-                item.appendChild(open);
-
-                item.appendChild(remove);
-
-                chatList.appendChild(item);
-
+                input.focus();
             }
         );
+
+        const remove =
+            document.createElement("button");
+
+        remove.type = "button";
+        remove.className = "chat-delete";
+        remove.title = "Delete chat";
+        remove.textContent = "🗑";
+
+        remove.addEventListener(
+            "click",
+            function(event) {
+
+                event.stopPropagation();
+
+                deleteChat(
+                    chatData.id
+                );
+            }
+        );
+
+        item.appendChild(open);
+        item.appendChild(remove);
+
+        chatList.appendChild(item);
+    });
 }
 
 
@@ -1114,27 +1050,20 @@ function deleteChat(id) {
 
     chats =
         chats.filter(
-            item =>
-                item.id !== id
+            item => item.id !== id
         );
 
-
-    if (
-        activeChatId === id
-    ) {
+    if (activeChatId === id) {
 
         activeChatId =
-            chats.length > 0
+            chats.length
                 ? chats[0].id
                 : null;
-
     }
-
 
     saveChats();
 
     renderChatList();
-
     renderActiveChat();
 }
 
@@ -1147,37 +1076,25 @@ function newChat() {
 
     const chatData = {
 
-        id:
-            createId(),
+        id: createId(),
 
-        title:
-            "New chat",
+        title: "New chat",
 
-        messages:
-            [],
+        messages: [],
 
-        createdAt:
-            Date.now(),
+        createdAt: Date.now(),
 
-        updatedAt:
-            Date.now()
-
+        updatedAt: Date.now()
     };
 
-
-    chats.unshift(
-        chatData
-    );
-
+    chats.unshift(chatData);
 
     activeChatId =
         chatData.id;
 
-
     saveChats();
 
     renderChatList();
-
     renderActiveChat();
 
     input.focus();
@@ -1191,7 +1108,6 @@ function newChat() {
 function renderWelcome() {
 
     chatInner.innerHTML = `
-
         <div
             id="welcome"
             class="welcome"
@@ -1246,7 +1162,6 @@ function renderWelcome() {
             </div>
 
         </div>
-
     `;
 }
 
@@ -1259,22 +1174,18 @@ function renderActiveChat() {
 
     chatInner.innerHTML = "";
 
-
     const active =
         getActiveChat();
 
-
     if (
         !active ||
-        !active.messages ||
+        !Array.isArray(active.messages) ||
         active.messages.length === 0
     ) {
 
         renderWelcome();
-
         return;
     }
-
 
     active.messages.forEach(
         function(message) {
@@ -1283,40 +1194,29 @@ function renderActiveChat() {
                 message.role,
                 message.content
             );
-
         }
     );
-
 
     scrollBottom();
 }
 
 
 /* ============================================================
-   MESSAGE UI
+   ADD MESSAGE UI
    ============================================================ */
 
-function addMessageToUI(
-    role,
-    text
-) {
+function addMessageToUI(role, text) {
 
     const message =
-        document.createElement(
-            "div"
-        );
-
+        document.createElement("div");
 
     message.className =
         "message " + role;
 
-
     const isAI =
         role === "assistant";
 
-
     message.innerHTML = `
-
         <div class="avatar">
             ${isAI ? "👻" : "M"}
         </div>
@@ -1328,83 +1228,61 @@ function addMessageToUI(
             </div>
 
             <div class="content">
-
                 ${
                     isAI
                         ? formatAnswer(text)
                         : escapeHtml(text)
-                            .replace(
-                                /\n/g,
-                                "<br>"
-                            )
+                            .replace(/\n/g, "<br>")
                 }
-
             </div>
 
         </div>
-
     `;
 
-
-    chatInner.appendChild(
-        message
-    );
-
+    chatInner.appendChild(message);
 
     message
-        .querySelectorAll(
-            ".copy-button"
-        )
-        .forEach(
-            function(button) {
+        .querySelectorAll(".copy-button")
+        .forEach(function(button) {
 
-                button.addEventListener(
-                    "click",
-                    async function() {
+            button.addEventListener(
+                "click",
+                async function() {
 
-                        const pre =
-                            button.previousElementSibling;
+                    const pre =
+                        button.previousElementSibling;
 
-
-                        if (!pre) {
-                            return;
-                        }
-
-
-                        try {
-
-                            await navigator.clipboard.writeText(
-                                pre.innerText
-                            );
-
-
-                            button.textContent =
-                                "Copied!";
-
-
-                            setTimeout(
-                                function() {
-
-                                    button.textContent =
-                                        "Copy code";
-
-                                },
-                                1000
-                            );
-
-
-                        } catch {
-
-                            button.textContent =
-                                "Copy failed";
-
-                        }
-
+                    if (!pre) {
+                        return;
                     }
-                );
 
-            }
-        );
+                    try {
+
+                        await navigator.clipboard.writeText(
+                            pre.innerText
+                        );
+
+                        button.textContent =
+                            "Copied!";
+
+                        setTimeout(
+                            function() {
+
+                                button.textContent =
+                                    "Copy code";
+
+                            },
+                            1000
+                        );
+
+                    } catch {
+
+                        button.textContent =
+                            "Copy failed";
+                    }
+                }
+            );
+        });
 }
 
 
@@ -1422,23 +1300,16 @@ function showTyping() {
         return;
     }
 
-
     const message =
-        document.createElement(
-            "div"
-        );
-
+        document.createElement("div");
 
     message.id =
         "typingMessage";
 
-
     message.className =
         "message assistant";
 
-
     message.innerHTML = `
-
         <div class="avatar">
             👻
         </div>
@@ -1456,14 +1327,9 @@ function showTyping() {
             </div>
 
         </div>
-
     `;
 
-
-    chatInner.appendChild(
-        message
-    );
-
+    chatInner.appendChild(message);
 
     scrollBottom();
 }
@@ -1476,7 +1342,6 @@ function removeTyping() {
             "typingMessage"
         );
 
-
     if (typing) {
         typing.remove();
     }
@@ -1484,49 +1349,25 @@ function removeTyping() {
 
 
 /* ============================================================
-   SCROLL
-   ============================================================ */
-
-function scrollBottom() {
-
-    requestAnimationFrame(
-        function() {
-
-            chat.scrollTop =
-                chat.scrollHeight;
-
-        }
-    );
-}
-
-
-/* ============================================================
    SEND MESSAGE
    ============================================================ */
 
-async function sendMessage(
-    customText = null
-) {
+async function sendMessage(customText = null) {
 
     let active =
         getActiveChat();
 
-
     if (!active) {
-
         newChat();
-
         active =
             getActiveChat();
     }
-
 
     const text = (
         customText !== null
             ? String(customText)
             : input.value
     ).trim();
-
 
     if (
         !text ||
@@ -1535,72 +1376,37 @@ async function sendMessage(
         return;
     }
 
+    input.value = "";
+    input.style.height = "auto";
 
-    input.value =
-        "";
-
-    input.style.height =
-        "auto";
-
-
-    sendButton.disabled =
-        true;
-
-
-    /*
-        Automatic chat title from
-        the first message.
-    */
+    sendButton.disabled = true;
 
     if (
+        !active.messages ||
         active.messages.length === 0
     ) {
-
         active.title =
             makeTitle(text);
-
     }
 
-
-    /*
-        Save user message.
-    */
-
     active.messages.push({
-
-        role:
-            "user",
-
-        content:
-            text
-
+        role: "user",
+        content: text
     });
-
 
     active.updatedAt =
         Date.now();
 
-
     saveChats();
 
-
     renderChatList();
-
     renderActiveChat();
-
     showTyping();
-
-
-    /*
-        Keep only recent messages
-        in API request.
-    */
 
     const recent =
         active.messages.slice(
             -MAX_HISTORY
         );
-
 
     try {
 
@@ -1608,138 +1414,101 @@ async function sendMessage(
             await fetch(
                 "/api/chat",
                 {
-                    method:
-                        "POST",
+                    method: "POST",
 
                     headers: {
                         "Content-Type":
                             "application/json"
                     },
 
-                    body:
-                        JSON.stringify({
-                            messages:
-                                recent
-                        })
+                    body: JSON.stringify({
+                        messages: recent
+                    })
                 }
             );
-
 
         const data =
             await response.json();
 
-
         removeTyping();
-
 
         if (!response.ok) {
 
             active.messages.push({
-
-                role:
-                    "assistant",
-
+                role: "assistant",
                 content:
                     "⚠️ " +
                     (
                         data.error ||
                         "Gabim gjatë komunikimit me AI."
                     )
-
             });
-
 
             active.updatedAt =
                 Date.now();
 
-
             saveChats();
-
+            renderChatList();
             renderActiveChat();
 
             return;
         }
 
-
         const answer =
             data.answer ||
             "Nuk mora përgjigje.";
 
-
         active.messages.push({
-
-            role:
-                "assistant",
-
-            content:
-                answer
-
+            role: "assistant",
+            content: answer
         });
-
 
         active.updatedAt =
             Date.now();
 
-
         saveChats();
 
         renderChatList();
-
         renderActiveChat();
-
 
     } catch (error) {
 
         removeTyping();
 
-
         active.messages.push({
-
-            role:
-                "assistant",
-
+            role: "assistant",
             content:
                 "⚠️ Nuk u lidh dot me Ghost-AI."
-
         });
-
 
         active.updatedAt =
             Date.now();
 
-
         saveChats();
-
+        renderChatList();
         renderActiveChat();
-
 
         console.error(
             "Ghost-AI error:",
             error
         );
 
-
     } finally {
 
-        sendButton.disabled =
-            false;
-
+        sendButton.disabled = false;
         input.focus();
-
     }
 }
 
 
 /* ============================================================
-   BUTTON EVENTS
+   EVENTS
    ============================================================ */
 
 sendButton.addEventListener(
     "click",
     function() {
-
         sendMessage();
-
     }
 );
 
@@ -1747,17 +1516,10 @@ sendButton.addEventListener(
 newChatButton.addEventListener(
     "click",
     function() {
-
         newChat();
-
     }
 );
 
-
-/* ============================================================
-   ENTER = SEND
-   SHIFT+ENTER = NEW LINE
-   ============================================================ */
 
 input.addEventListener(
     "keydown",
@@ -1771,38 +1533,25 @@ input.addEventListener(
             event.preventDefault();
 
             sendMessage();
-
         }
-
     }
 );
 
-
-/* ============================================================
-   AUTO RESIZE
-   ============================================================ */
 
 input.addEventListener(
     "input",
     function() {
 
-        this.style.height =
-            "auto";
-
+        this.style.height = "auto";
 
         this.style.height =
             Math.min(
                 this.scrollHeight,
                 180
             ) + "px";
-
     }
 );
 
-
-/* ============================================================
-   PROMPT BUTTONS
-   ============================================================ */
 
 document.addEventListener(
     "click",
@@ -1813,26 +1562,18 @@ document.addEventListener(
                 ".prompt-button"
             );
 
-
         if (!button) {
             return;
         }
-
 
         const prompt =
             button.getAttribute(
                 "data-prompt"
             );
 
-
         if (prompt) {
-
-            sendMessage(
-                prompt
-            );
-
+            sendMessage(prompt);
         }
-
     }
 );
 
@@ -1843,22 +1584,11 @@ document.addEventListener(
 
 loadChats();
 
-
 if (chats.length > 0) {
-
-    activeChatId =
-        chats[0].id;
-
-} else {
-
-    activeChatId =
-        null;
-
+    activeChatId = chats[0].id;
 }
 
-
 renderChatList();
-
 renderActiveChat();
 
 input.focus();
@@ -1884,83 +1614,45 @@ def chat_api():
 
     try:
 
-        data =
-            request.get_json(
-                silent=True
-            )
+        data = request.get_json(silent=True)
 
-
-        if not isinstance(
-            data,
-            dict
-        ):
+        if not isinstance(data, dict):
 
             return jsonify({
-                "error":
-                    "Invalid request."
+                "error": "Invalid request."
             }), 400
 
+        incoming = data.get(
+            "messages",
+            []
+        )
 
-        incoming =
-            data.get(
-                "messages",
-                []
-            )
-
-
-        if not isinstance(
-            incoming,
-            list
-        ):
+        if not isinstance(incoming, list):
 
             return jsonify({
-                "error":
-                    "Invalid messages."
+                "error": "Invalid messages."
             }), 400
 
-
-        recent =
-            incoming[-MAX_HISTORY:]
-
+        recent = incoming[-MAX_HISTORY:]
 
         request_messages = [
-
             {
-                "role":
-                    "system",
-
-                "content":
-                    (
-                        SYSTEM_PROMPT +
-                        "\n\nSaved memory:\n" +
-                        memory_text()
-                    )
-
+                "role": "system",
+                "content": (
+                    SYSTEM_PROMPT
+                    + "\n\nSaved memory:\n"
+                    + memory_text()
+                )
             }
-
         ]
-
 
         for item in recent:
 
-            if not isinstance(
-                item,
-                dict
-            ):
+            if not isinstance(item, dict):
                 continue
 
-
-            role =
-                item.get(
-                    "role"
-                )
-
-
-            content =
-                item.get(
-                    "content"
-                )
-
+            role = item.get("role")
+            content = item.get("content")
 
             if role not in (
                 "user",
@@ -1968,126 +1660,70 @@ def chat_api():
             ):
                 continue
 
-
-            if not isinstance(
-                content,
-                str
-            ):
+            if not isinstance(content, str):
                 continue
 
-
             request_messages.append({
-
-                "role":
-                    role,
-
-                "content":
-                    content[:5000]
-
+                "role": role,
+                "content": content[:5000]
             })
 
-
-        if len(
-            request_messages
-        ) < 2:
+        if len(request_messages) < 2:
 
             return jsonify({
-                "error":
-                    "No user message."
+                "error": "No user message."
             }), 400
 
-
-        if (
-            request_messages[-1]["role"]
-            != "user"
-        ):
+        if request_messages[-1]["role"] != "user":
 
             return jsonify({
-                "error":
-                    "Last message must be from user."
+                "error": "Last message must be from user."
             }), 400
 
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=request_messages,
+            temperature=0.6,
+            top_p=0.95,
+            max_completion_tokens=MAX_OUTPUT_TOKENS
+        )
 
-        response =
-            client.chat.completions.create(
-
-                model =
-                    MODEL,
-
-                messages =
-                    request_messages,
-
-                temperature =
-                    0.6,
-
-                top_p =
-                    0.95,
-
-                max_completion_tokens =
-                    MAX_OUTPUT_TOKENS
-
-            )
-
-
-        answer =
-            response.choices[0].message.content
-
+        answer = response.choices[0].message.content
 
         if not answer:
-
-            answer =
-                "Nuk mora përgjigje."
-
+            answer = "Nuk mora përgjigje."
 
         return jsonify({
-
-            "answer":
-                answer
-
+            "answer": answer
         })
-
 
     except Exception as error:
 
-        error_text =
-            str(error)
-
+        error_text = str(error)
 
         if "413" in error_text:
 
             return jsonify({
-
                 "error":
                     "Kërkesa është shumë e madhe për limitin aktual të Groq."
-
             }), 413
-
 
         if "429" in error_text:
 
             return jsonify({
-
                 "error":
                     "U arrit limiti TPM i Groq. Provo përsëri pas pak."
-
             }), 429
-
 
         if "401" in error_text:
 
             return jsonify({
-
                 "error":
                     "GROQ_API_KEY nuk është e vlefshme."
-
             }), 401
 
-
         return jsonify({
-
-            "error":
-                error_text
-
+            "error": error_text
         }), 500
 
 
@@ -2099,8 +1735,7 @@ def chat_api():
 def get_memory():
 
     return jsonify({
-        "memory":
-            memory
+        "memory": memory
     })
 
 
@@ -2109,42 +1744,29 @@ def add_memory():
 
     global memory
 
-    data =
-        request.get_json(
-            silent=True
-        ) or {}
+    data = request.get_json(
+        silent=True
+    ) or {}
 
-
-    text =
-        str(
-            data.get(
-                "text",
-                ""
-            )
-        ).strip()
-
+    text = str(
+        data.get(
+            "text",
+            ""
+        )
+    ).strip()
 
     if not text:
 
         return jsonify({
-            "error":
-                "Memory is empty."
+            "error": "Memory is empty."
         }), 400
 
+    memory.append(text)
 
-    memory.append(
-        text
-    )
-
-
-    save_memory(
-        memory
-    )
-
+    save_memory(memory)
 
     return jsonify({
-        "ok":
-            True
+        "ok": True
     })
 
 
@@ -2155,19 +1777,15 @@ def clear_memory():
 
     memory = []
 
-    save_memory(
-        memory
-    )
-
+    save_memory(memory)
 
     return jsonify({
-        "ok":
-            True
+        "ok": True
     })
 
 
 # ============================================================
-# SERVER
+# START SERVER
 # ============================================================
 
 if __name__ == "__main__":
@@ -2179,7 +1797,6 @@ if __name__ == "__main__":
         )
     )
 
-
     print()
     print("======================================")
     print("          GHOST-AI ONLINE")
@@ -2188,7 +1805,6 @@ if __name__ == "__main__":
     print(f"PORT  : {port}")
     print("======================================")
     print()
-
 
     app.run(
         host="0.0.0.0",
