@@ -1,8 +1,7 @@
 from flask import Flask, request
+import os
 
 app = Flask(__name__)
-
-import os
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "matia_ai_2026")
 
@@ -12,25 +11,21 @@ def home():
     return "MATIA AI IS ONLINE 🤖🔥", 200
 
 
-@app.route("/webhook", methods=["GET"])
-def verify_webhook():
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
+@app.route("/webhook", methods=["GET", "POST"])
+def webhook():
+    if request.method == "GET":
+        mode = request.args.get("hub.mode")
+        token = request.args.get("hub.verify_token")
+        challenge = request.args.get("hub.challenge")
 
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        return challenge, 200
+        if mode == "subscribe" and token == VERIFY_TOKEN:
+            return challenge, 200
 
-    return "Verification failed", 403
+        return "Verification failed", 403
 
-
-@app.route("/webhook", methods=["POST"])
-def receive_webhook():
     data = request.get_json(silent=True)
-
     print("=== WHATSAPP WEBHOOK ===")
     print(data)
-    print("========================")
 
     return "EVENT_RECEIVED", 200
 
